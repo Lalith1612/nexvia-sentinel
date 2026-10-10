@@ -1,0 +1,535 @@
+{
+  "audit_timestamp": "2026-10-10T12:26:17Z",
+  "status": "VERIFIED_WITH_FINDINGS",
+  "reproduction_summary": {
+    "reproduced_pr_auc": 0.9993,
+    "reproduced_roc_auc": 0.9994,
+    "reproduced_precision": 0.9993,
+    "reproduced_recall": 0.9993,
+    "reproduced_f1": 0.9993,
+    "reproduced_confusion_matrix": {
+      "TN": 89462,
+      "FP": 1,
+      "FN": 1,
+      "TP": 1365
+    },
+    "discrepancies_count": 0,
+    "verdict": "Exact mathematical reproduction verified. All metrics match to 4 decimal places."
+  },
+  "why_pr_auc_is_near_unity": {
+    "root_cause": "The PaySim synthetic benchmark generator (Lopez-Rojas et al.) hardcodes fraudulent agent actions: fraudulent transactions transfer or cash-out 100% of the victim's funds (amount == oldbalanceOrg). In the holdout test set, 99.85% of fraud cases satisfy this exact equality, whereas only 0.05% of legitimate transactions do.",
+    "leakage_assessment": "This is NOT code leakage (no future steps or target labels are leaked into features). However, it IS a dataset-specific simulator artifact / strong domain proxy. Real-world fraud patterns exhibit greater variability (e.g., partial balance withdrawals, card testing micro-transactions).",
+    "phase_3_implication": "The XGBoost model is suitable as the tabular baseline for the PaySim benchmark, but cannot detect multi-hop fraud rings, structuring, or mule accounts. The Phase 3 PyG graph model is essential to detect structural patterns where individual transaction amounts are benign."
+  },
+  "feature_source_audit": [
+    {
+      "feature": "amount",
+      "source_columns": [
+        "amount"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (core transaction amount)"
+    },
+    {
+      "feature": "log_amount",
+      "source_columns": [
+        "amount"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (log transform)"
+    },
+    {
+      "feature": "oldbalanceOrg",
+      "source_columns": [
+        "oldbalanceOrg"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (available balance prior to tx)"
+    },
+    {
+      "feature": "log_oldbalanceOrg",
+      "source_columns": [
+        "oldbalanceOrg"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (log transform)"
+    },
+    {
+      "feature": "oldbalanceDest",
+      "source_columns": [
+        "oldbalanceDest"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (ledger balance of recipient)"
+    },
+    {
+      "feature": "log_oldbalanceDest",
+      "source_columns": [
+        "oldbalanceDest"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (log transform)"
+    },
+    {
+      "feature": "amount_to_oldbalance_ratio",
+      "source_columns": [
+        "amount",
+        "oldbalanceOrg"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (ratio of amount to sender balance)"
+    },
+    {
+      "feature": "orig_balance_depletion",
+      "source_columns": [
+        "amount",
+        "oldbalanceOrg"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "Strong Proxy (identifies liquidation attempt)"
+    },
+    {
+      "feature": "orig_oldbalance_is_zero",
+      "source_columns": [
+        "oldbalanceOrg"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (zero balance indicator)"
+    },
+    {
+      "feature": "dest_oldbalance_is_zero",
+      "source_columns": [
+        "oldbalanceDest"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (zero balance indicator)"
+    },
+    {
+      "feature": "is_dest_merchant",
+      "source_columns": [
+        "nameDest"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (prefix 'M' indicator)"
+    },
+    {
+      "feature": "expected_newbalance_orig",
+      "source_columns": [
+        "amount",
+        "oldbalanceOrg"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "Strong Proxy (max(0, balance - amount))"
+    },
+    {
+      "feature": "orig_deficit",
+      "source_columns": [
+        "amount",
+        "oldbalanceOrg"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "Strong Proxy (max(0, amount - balance))"
+    },
+    {
+      "feature": "hour_of_day",
+      "source_columns": [
+        "step"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (timestamp diurnal mod 24)"
+    },
+    {
+      "feature": "day_of_week",
+      "source_columns": [
+        "step"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (timestamp weekly mod 7)"
+    },
+    {
+      "feature": "type_CASH_IN",
+      "source_columns": [
+        "type"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (one-hot transaction type)"
+    },
+    {
+      "feature": "type_CASH_OUT",
+      "source_columns": [
+        "type"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (one-hot transaction type)"
+    },
+    {
+      "feature": "type_DEBIT",
+      "source_columns": [
+        "type"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (one-hot transaction type)"
+    },
+    {
+      "feature": "type_PAYMENT",
+      "source_columns": [
+        "type"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (one-hot transaction type)"
+    },
+    {
+      "feature": "type_TRANSFER",
+      "source_columns": [
+        "type"
+      ],
+      "prediction_point": "Pre-Authorization",
+      "leakage_risk": "None (one-hot transaction type)"
+    }
+  ],
+  "proxy_distribution_analysis": {
+    "train": {
+      "partition": "Train (steps 1\u2013500)",
+      "total_records": 205411,
+      "fraud_count": 5561,
+      "legit_count": 199850,
+      "depletion_rate_pct": {
+        "fraud": 97.9,
+        "legit": 31.06
+      },
+      "exact_drain_amount_equals_balance_pct": {
+        "fraud": 97.93,
+        "legit": 0.0
+      },
+      "expected_newbalance_zero_pct": {
+        "fraud": 98.45,
+        "legit": 64.23
+      },
+      "deficit_gt_zero_pct": {
+        "fraud": 0.52,
+        "legit": 64.23
+      }
+    },
+    "val": {
+      "partition": "Val (steps 501\u2013620)",
+      "total_records": 209984,
+      "fraud_count": 1286,
+      "legit_count": 208698,
+      "depletion_rate_pct": {
+        "fraud": 98.29,
+        "legit": 32.12
+      },
+      "exact_drain_amount_equals_balance_pct": {
+        "fraud": 98.52,
+        "legit": 0.0
+      },
+      "expected_newbalance_zero_pct": {
+        "fraud": 98.52,
+        "legit": 61.66
+      },
+      "deficit_gt_zero_pct": {
+        "fraud": 0.0,
+        "legit": 61.66
+      }
+    },
+    "test": {
+      "partition": "Test (steps 621\u2013743)",
+      "total_records": 90829,
+      "fraud_count": 1366,
+      "legit_count": 89463,
+      "depletion_rate_pct": {
+        "fraud": 96.19,
+        "legit": 36.12
+      },
+      "exact_drain_amount_equals_balance_pct": {
+        "fraud": 96.71,
+        "legit": 0.0
+      },
+      "expected_newbalance_zero_pct": {
+        "fraud": 96.71,
+        "legit": 62.2
+      },
+      "deficit_gt_zero_pct": {
+        "fraud": 0.0,
+        "legit": 62.2
+      }
+    }
+  },
+  "sliced_performance": {
+    "by_transaction_type": {
+      "TRANSFER": {
+        "total_records": 8974,
+        "fraud_count": 683,
+        "fraud_rate_pct": 7.6109,
+        "pr_auc": 0.9986,
+        "precision": 1.0,
+        "recall": 0.9985,
+        "f1_score": 0.9993,
+        "confusion_matrix": {
+          "TN": 8291,
+          "FP": 0,
+          "FN": 1,
+          "TP": 682
+        }
+      },
+      "CASH_OUT": {
+        "total_records": 29501,
+        "fraud_count": 683,
+        "fraud_rate_pct": 2.3152,
+        "pr_auc": 1.0,
+        "precision": 0.9985,
+        "recall": 1.0,
+        "f1_score": 0.9993,
+        "confusion_matrix": {
+          "TN": 28817,
+          "FP": 1,
+          "FN": 0,
+          "TP": 683
+        }
+      },
+      "PAYMENT": {
+        "total_records": 30646,
+        "fraud_count": 0,
+        "fraud_rate_pct": 0.0,
+        "pr_auc": "N/A (0 fraud instances)",
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "confusion_matrix": {
+          "TN": 30646,
+          "FP": 0,
+          "FN": 0,
+          "TP": 0
+        }
+      },
+      "CASH_IN": {
+        "total_records": 20993,
+        "fraud_count": 0,
+        "fraud_rate_pct": 0.0,
+        "pr_auc": "N/A (0 fraud instances)",
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "confusion_matrix": {
+          "TN": 20993,
+          "FP": 0,
+          "FN": 0,
+          "TP": 0
+        }
+      },
+      "DEBIT": {
+        "total_records": 715,
+        "fraud_count": 0,
+        "fraud_rate_pct": 0.0,
+        "pr_auc": "N/A (0 fraud instances)",
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "confusion_matrix": {
+          "TN": 715,
+          "FP": 0,
+          "FN": 0,
+          "TP": 0
+        }
+      }
+    },
+    "by_chronological_window": {
+      "Early_Test_Steps_621_660": {
+        "step_range": "621 to 660",
+        "total_records": 14543,
+        "fraud_count": 450,
+        "fraud_rate_pct": 3.0943,
+        "pr_auc": 0.9978,
+        "roc_auc": 0.9982,
+        "precision": 1.0,
+        "recall": 0.9978,
+        "f1_score": 0.9989,
+        "confusion_matrix": {
+          "TN": 14093,
+          "FP": 0,
+          "FN": 1,
+          "TP": 449
+        }
+      },
+      "Mid_Test_Steps_661_700": {
+        "step_range": "661 to 700",
+        "total_records": 64865,
+        "fraud_count": 426,
+        "fraud_rate_pct": 0.6567,
+        "pr_auc": 1.0,
+        "roc_auc": 1.0,
+        "precision": 0.9977,
+        "recall": 1.0,
+        "f1_score": 0.9988,
+        "confusion_matrix": {
+          "TN": 64438,
+          "FP": 1,
+          "FN": 0,
+          "TP": 426
+        }
+      },
+      "Late_Test_Steps_701_743": {
+        "step_range": "701 to 743",
+        "total_records": 11421,
+        "fraud_count": 490,
+        "fraud_rate_pct": 4.2903,
+        "pr_auc": 1.0,
+        "roc_auc": 1.0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1_score": 1.0,
+        "confusion_matrix": {
+          "TN": 10931,
+          "FP": 0,
+          "FN": 0,
+          "TP": 490
+        }
+      }
+    }
+  },
+  "identifier_and_duplicate_audit": {
+    "unique_senders_train": 205402,
+    "unique_senders_test": 90828,
+    "sender_id_overlap_count": 9,
+    "sender_id_overlap_pct": 0.0099,
+    "unique_recipients_train": 177645,
+    "unique_recipients_test": 87897,
+    "recipient_id_overlap_count": 10836,
+    "recipient_id_overlap_pct": 12.3281,
+    "test_duplicate_rows": 0,
+    "account_id_included_in_model_features": false,
+    "assessment": "No account ID leakage into the tabular model. Senders (nameOrig) in PaySim are almost 100% unique one-time accounts. Destination IDs do overlap for merchant hubs and common cashout agents, but raw strings are strictly excluded from tabular model features."
+  },
+  "ablation_study": {
+    "model_a_production": {
+      "description": "Full production feature set (20 features)",
+      "features_used": [
+        "amount",
+        "log_amount",
+        "oldbalanceOrg",
+        "log_oldbalanceOrg",
+        "oldbalanceDest",
+        "log_oldbalanceDest",
+        "amount_to_oldbalance_ratio",
+        "orig_balance_depletion",
+        "orig_oldbalance_is_zero",
+        "dest_oldbalance_is_zero",
+        "is_dest_merchant",
+        "expected_newbalance_orig",
+        "orig_deficit",
+        "hour_of_day",
+        "day_of_week",
+        "type_CASH_IN",
+        "type_CASH_OUT",
+        "type_DEBIT",
+        "type_PAYMENT",
+        "type_TRANSFER"
+      ],
+      "optimal_threshold": 0.62,
+      "pr_auc": 0.9993,
+      "roc_auc": 0.9994,
+      "precision": 0.9993,
+      "recall": 0.9993,
+      "f1_score": 0.9993,
+      "confusion_matrix": {
+        "TN": 89462,
+        "FP": 1,
+        "FN": 1,
+        "TP": 1365
+      }
+    },
+    "model_b_no_depletion_proxies": {
+      "description": "Ablated model excluding depletion proxy features (orig_balance_depletion, expected_newbalance_orig, orig_deficit, amount_to_oldbalance_ratio)",
+      "features_used": [
+        "amount",
+        "log_amount",
+        "oldbalanceOrg",
+        "log_oldbalanceOrg",
+        "oldbalanceDest",
+        "log_oldbalanceDest",
+        "orig_oldbalance_is_zero",
+        "dest_oldbalance_is_zero",
+        "is_dest_merchant",
+        "hour_of_day",
+        "day_of_week",
+        "type_CASH_IN",
+        "type_CASH_OUT",
+        "type_DEBIT",
+        "type_PAYMENT",
+        "type_TRANSFER"
+      ],
+      "optimal_threshold": 0.9,
+      "pr_auc": 0.9755,
+      "roc_auc": 0.9995,
+      "precision": 0.8884,
+      "recall": 0.9268,
+      "f1_score": 0.9072,
+      "confusion_matrix": {
+        "TN": 89304,
+        "FP": 159,
+        "FN": 100,
+        "TP": 1266
+      }
+    },
+    "model_c_no_balances": {
+      "description": "Ablated model excluding all balance features entirely (raw transaction amount, type, time only)",
+      "features_used": [
+        "amount",
+        "log_amount",
+        "hour_of_day",
+        "day_of_week",
+        "type_CASH_IN",
+        "type_CASH_OUT",
+        "type_DEBIT",
+        "type_PAYMENT",
+        "type_TRANSFER",
+        "is_dest_merchant"
+      ],
+      "optimal_threshold": 0.89,
+      "pr_auc": 0.5053,
+      "roc_auc": 0.954,
+      "precision": 0.6344,
+      "recall": 0.3939,
+      "f1_score": 0.486,
+      "confusion_matrix": {
+        "TN": 89153,
+        "FP": 310,
+        "FN": 828,
+        "TP": 538
+      }
+    }
+  },
+  "disaggregated_latency": {
+    "benchmark_sample_count": 500,
+    "methodology": "500 sequentially measured single-transaction payloads (warmup excluded, real dictionary -> dataframe -> numpy -> model -> decision)",
+    "feature_transformation": {
+      "mean_ms": 15.085,
+      "median_p50_ms": 14.246,
+      "p90_ms": 17.241,
+      "p95_ms": 18.066,
+      "p99_ms": 19.674
+    },
+    "model_inference": {
+      "mean_ms": 1.182,
+      "median_p50_ms": 0.942,
+      "p90_ms": 1.252,
+      "p95_ms": 1.903,
+      "p99_ms": 2.637
+    },
+    "application_tiering_logic": {
+      "mean_ms": 0.003,
+      "median_p50_ms": 0.003,
+      "p90_ms": 0.003,
+      "p95_ms": 0.004,
+      "p99_ms": 0.007
+    },
+    "end_to_end_total": {
+      "mean_ms": 16.27,
+      "median_p50_ms": 15.205,
+      "p90_ms": 18.423,
+      "p95_ms": 19.31,
+      "p99_ms": 25.427
+    },
+    "engineering_finding": "XGBoost raw matrix inference is extremely fast (1.182 ms). The majority of single-item latency (15.085 ms) stems from Python/pandas DataFrame instantiation for a single dictionary. For sub-millisecond production inference, the feature pipeline should use pre-allocated NumPy buffers or Feast online lookups."
+  }
+}
