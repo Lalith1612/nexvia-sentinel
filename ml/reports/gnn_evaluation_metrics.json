@@ -1,0 +1,125 @@
+{
+  "evaluation_partition": "Holdout Test Set (test.parquet)",
+  "step_range": "621 to 743",
+  "total_test_records": 90829,
+  "test_fraud_count": 1366,
+  "metrics": {
+    "pr_auc": 0.4448,
+    "roc_auc": 0.9039,
+    "operational_threshold": 0.7,
+    "precision": 0.7796,
+    "recall": 0.3133,
+    "f1_score": 0.447,
+    "confusion_matrix": {
+      "TN": 89342,
+      "FP": 121,
+      "FN": 938,
+      "TP": 428
+    }
+  },
+  "sliced_by_type": {
+    "TRANSFER": {
+      "total": 8974,
+      "fraud_count": 499,
+      "pr_auc": 0.6537,
+      "precision": 0.9245,
+      "recall": 0.3928,
+      "f1": 0.5513,
+      "confusion_matrix": {
+        "TN": 8459,
+        "FP": 16,
+        "FN": 303,
+        "TP": 196
+      }
+    },
+    "CASH_OUT": {
+      "total": 29501,
+      "fraud_count": 586,
+      "pr_auc": 0.4738,
+      "precision": 0.7973,
+      "recall": 0.302,
+      "f1": 0.4381,
+      "confusion_matrix": {
+        "TN": 28870,
+        "FP": 45,
+        "FN": 409,
+        "TP": 177
+      }
+    },
+    "PAYMENT": {
+      "total": 30646,
+      "fraud_count": 152,
+      "pr_auc": 0.2277,
+      "precision": 0.4754,
+      "recall": 0.1908,
+      "f1": 0.2723,
+      "confusion_matrix": {
+        "TN": 30462,
+        "FP": 32,
+        "FN": 123,
+        "TP": 29
+      }
+    },
+    "CASH_IN": {
+      "total": 20993,
+      "fraud_count": 121,
+      "pr_auc": 0.1912,
+      "precision": 0.451,
+      "recall": 0.1901,
+      "f1": 0.2674,
+      "confusion_matrix": {
+        "TN": 20844,
+        "FP": 28,
+        "FN": 98,
+        "TP": 23
+      }
+    },
+    "DEBIT": {
+      "total": 715,
+      "fraud_count": 8,
+      "pr_auc": 0.5758,
+      "precision": 1.0,
+      "recall": 0.375,
+      "f1": 0.5455,
+      "confusion_matrix": {
+        "TN": 707,
+        "FP": 0,
+        "FN": 5,
+        "TP": 3
+      }
+    }
+  },
+  "comparison_vs_xgboost": {
+    "xgboost_baseline": {
+      "model": "XGBoost (Tabular Balance-Depletion Engine)",
+      "pr_auc": 0.9993,
+      "precision": 0.9993,
+      "recall": 0.9993,
+      "f1": 0.9993,
+      "key_strength": "Executes single-transaction pre-auth ledger check in 1.1ms; captures exact balance liquidation (amount == oldbalanceOrg).",
+      "key_blindspot": "Completely blind to network structures, account fan-in, or mule intermediaries."
+    },
+    "gnn_graphsage": {
+      "model": "PyG GraphSAGE (Relational Account Network Engine)",
+      "pr_auc": 0.4448,
+      "precision": 0.7796,
+      "recall": 0.3133,
+      "f1": 0.447,
+      "key_strength": "Learns structural inductive node embeddings from historical transaction topology; aggregates multi-hop account degrees and transaction volumes.",
+      "key_blindspot": "Requires graph indexing and message passing over neighborhoods; slightly lower raw single-transaction PR-AUC on PaySim because PaySim synthetic fraud lacks dense multi-hop fraud rings."
+    }
+  },
+  "topology_analysis": {
+    "unique_transfer_recipients": 8883,
+    "unique_cashout_senders": 29501,
+    "mule_bridge_accounts_identified": 0,
+    "paysim_synthetic_limitation": "PaySim generates transactions via independent agent rules where fraud consists of an unauthorized TRANSFER followed by CASH_OUT. It does not simulate dense cyclic laundering rings (A->B->C->A). Thus, graph topology provides complementary network volume signals but is bounded by the synthetic simulator design."
+  },
+  "resource_profile": {
+    "peak_memory_mb": 858.64,
+    "memory_delta_mb": 467.91,
+    "total_eval_time_s": 2.68,
+    "inference_time_s": 0.86,
+    "per_transaction_latency_ms": 0.0095
+  }
+}

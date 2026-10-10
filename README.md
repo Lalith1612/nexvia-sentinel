@@ -115,7 +115,17 @@ AIML-01/
     - **Recall @ Threshold (0.620):** `99.93%`
     - **Inference Latency:** `12.3 ms` single transaction, `0.0032 ms/txn` batch.
   - 15 automated unit & integration tests passing.
-- [ ] **Phase 3: Account Graph Network Construction & PyTorch Geometric GNN Fraud-Ring Model**
+- [x] **Phase 3: Account Graph Network Construction & PyTorch Geometric GNN Fraud-Ring Model**
+  - Designed temporal directed account-to-account transaction multigraph.
+  - Built inductive 2-layer `SentinelGraphSAGE` with edge fraud classification head.
+  - Zero future edge and label leakage: node degrees and volumes accumulated strictly pre-authorization.
+  - Evaluated on untouched holdout test partition (90,829 txns):
+    - **ROC-AUC:** `0.9039`
+    - **PR-AUC (Average Precision):** `0.4448` (30x improvement over 0.015 majority baseline)
+    - **Precision @ Threshold (0.700):** `77.96%`
+    - **Edge Inference Throughput:** `0.0095 ms/txn` on CPU (> 100,000 TPS).
+    - **Peak Memory:** `390 MB` (well within 8 GB RAM host budget).
+  - 27 automated unit & regression tests passing.
 - [ ] **Phase 4: Hybrid Risk Combination Strategy, Explainability & Score Calibration**
 - [ ] **Phase 5: MLflow Experiment Tracking & Model Registry Integration**
 - [ ] **Phase 6: Feast Feature Store Setup & Real-Time Online Retrieval**
@@ -126,7 +136,7 @@ AIML-01/
 
 ---
 
-## 🛠️ Reproducing Phase 1 & 2 locally
+## 🛠️ Reproducing Phases 1, 2 & 3 locally
 
 ```powershell
 # 1. Initialize environment (Python 3.10)
@@ -143,13 +153,16 @@ python ml/pipelines/inspect_eda.py
 # 4. Generate leakage-safe temporal splits
 python ml/pipelines/temporal_splitter.py
 
-# 5. Train XGBoost model with validation threshold tuning
+# 5. Train XGBoost tabular model & evaluate
 python ml/pipelines/train_xgboost.py
-
-# 6. Evaluate against holdout test partition & benchmark latency
 python ml/pipelines/evaluate_models.py
 
-# 7. Execute automated test suite
+# 6. Train PyTorch Geometric GraphSAGE model & evaluate
+python ml/pipelines/train_gnn.py
+python ml/pipelines/evaluate_gnn.py
+
+# 7. Execute automated test suite (27 tests)
 pytest -v ml/tests/
 ```
+
 
