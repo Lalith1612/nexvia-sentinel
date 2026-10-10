@@ -1,6 +1,6 @@
 """
-Training Pipeline for Sentinel PyTorch Geometric GraphSAGE Model
-Trains an inductive edge-conditioned GNN for financial fraud and money mule detection.
+Training Pipeline for Sentinel PyTorch Geometric GraphSAGE Model (Temporal Leakage-Free)
+Trains an inductive edge-conditioned GNN for financial fraud detection.
 Employs class-imbalance weighting, validation PR-AUC monitoring, and resource profiling.
 """
 
@@ -41,7 +41,7 @@ def train_gnn():
     process = psutil.Process()
     initial_mem_mb = process.memory_info().rss / (1024 * 1024)
     print("=" * 80)
-    print("SENTINEL PYTORCH GEOMETRIC GNN TRAINING PIPELINE")
+    print("SENTINEL PYTORCH GEOMETRIC GNN TRAINING PIPELINE (LEAKAGE-FREE)")
     print(f"Initial Process Memory: {initial_mem_mb:.2f} MB")
     print("=" * 80)
 
@@ -52,11 +52,11 @@ def train_gnn():
     print(f"  Train Transactions : {len(train_df):,} ({int((train_df['isFraud']==1).sum()):,} frauds)")
     print(f"  Val Transactions   : {len(val_df):,} ({int((val_df['isFraud']==1).sum()):,} frauds)")
 
-    # 2. Build Graphs
-    print("\n[TRAIN_GNN 2/5] Building temporal graph structures...")
+    # 2. Build Graphs with running temporal state (Train -> Val)
+    print("\n[TRAIN_GNN 2/5] Building temporal graph structures without lookahead...")
     builder = SentinelGraphBuilder()
-    train_data, train_meta = builder.build_graph_data(train_df, is_training=True)
-    val_data, val_meta = builder.build_graph_data(val_df, is_training=False)
+    train_data, train_aligned_df, train_meta = builder.build_graph_data(train_df, update_state=True)
+    val_data, val_aligned_df, val_meta = builder.build_graph_data(val_df, update_state=True)
 
     post_graph_mem_mb = process.memory_info().rss / (1024 * 1024)
     print(f"  Graph Memory Usage : {post_graph_mem_mb - initial_mem_mb:.2f} MB (Total: {post_graph_mem_mb:.2f} MB)")
@@ -176,10 +176,10 @@ def train_gnn():
     print(f"  Peak RAM Consumption  : {peak_mem_mb:.2f} MB (Delta: {peak_mem_mb - initial_mem_mb:.2f} MB)")
     print(f"  Total Runtime          : {total_time_s:.2f} seconds")
 
-    # Save artifacts
-    builder.save_mapping(MAPPING_SAVE_PATH)
-    print(f"  Node mapping saved to : {MAPPING_SAVE_PATH}")
-    print(f"  Model weights saved to: {MODEL_SAVE_PATH}")
+    # Save state
+    builder.save_state(MAPPING_SAVE_PATH)
+    print(f"  Node state saved to    : {MAPPING_SAVE_PATH}")
+    print(f"  Model weights saved to : {MODEL_SAVE_PATH}")
 
     config = {
         "model_architecture": "SentinelGraphSAGE",

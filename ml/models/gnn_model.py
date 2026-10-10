@@ -18,7 +18,7 @@ class SentinelGraphSAGE(nn.Module):
     def __init__(
         self,
         node_in_channels: int = 5,
-        edge_in_channels: int = 11,
+        edge_in_channels: int = 15,
         hidden_channels: int = 64,
         out_channels: int = 32,
         dropout: float = 0.2

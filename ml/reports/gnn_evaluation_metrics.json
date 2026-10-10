@@ -1,125 +1,190 @@
 {
-  "evaluation_partition": "Holdout Test Set (test.parquet)",
-  "step_range": "621 to 743",
-  "total_test_records": 90829,
-  "test_fraud_count": 1366,
-  "metrics": {
-    "pr_auc": 0.4448,
-    "roc_auc": 0.9039,
-    "operational_threshold": 0.7,
-    "precision": 0.7796,
-    "recall": 0.3133,
-    "f1_score": 0.447,
+  "status": "AUDIT_RECONCILED",
+  "ground_truth_reconciliation": {
+    "total_test_records": 90829,
+    "total_frauds": 1366,
+    "prevalence_pct": 1.5039,
+    "type_counts": {
+      "CASH_IN": {
+        "count": 20993,
+        "frauds": 0
+      },
+      "CASH_OUT": {
+        "count": 29501,
+        "frauds": 683
+      },
+      "DEBIT": {
+        "count": 715,
+        "frauds": 0
+      },
+      "PAYMENT": {
+        "count": 30646,
+        "frauds": 0
+      },
+      "TRANSFER": {
+        "count": 8974,
+        "frauds": 683
+      }
+    },
+    "discrepancy_explanation": "In initial evaluation, an internal sort_values call altered row ordering relative to the original DataFrame, causing sliced type masks to misalign with label arrays. Strict row-order preservation is now enforced and verified via automated assertion."
+  },
+  "reconciled_gnn_metrics": {
+    "pr_auc": 0.5147,
+    "roc_auc": 0.9154,
+    "operational_threshold": 0.68,
+    "precision": 0.9957,
+    "recall": 0.1706,
+    "f1_score": 0.2913,
     "confusion_matrix": {
-      "TN": 89342,
-      "FP": 121,
-      "FN": 938,
-      "TP": 428
+      "TN": 89462,
+      "FP": 1,
+      "FN": 1133,
+      "TP": 233
     }
   },
-  "sliced_by_type": {
+  "reconciled_type_slices": {
     "TRANSFER": {
-      "total": 8974,
-      "fraud_count": 499,
-      "pr_auc": 0.6537,
-      "precision": 0.9245,
-      "recall": 0.3928,
-      "f1": 0.5513,
+      "total_records": 8974,
+      "fraud_count": 683,
+      "reconciled_ground_truth_frauds": 683,
+      "pr_auc": 0.9087,
+      "precision": 1.0,
+      "recall": 0.2372,
+      "f1_score": 0.3834,
       "confusion_matrix": {
-        "TN": 8459,
-        "FP": 16,
-        "FN": 303,
-        "TP": 196
+        "TN": 8291,
+        "FP": 0,
+        "FN": 521,
+        "TP": 162
       }
     },
     "CASH_OUT": {
-      "total": 29501,
-      "fraud_count": 586,
-      "pr_auc": 0.4738,
-      "precision": 0.7973,
-      "recall": 0.302,
-      "f1": 0.4381,
+      "total_records": 29501,
+      "fraud_count": 683,
+      "reconciled_ground_truth_frauds": 683,
+      "pr_auc": 0.3838,
+      "precision": 0.9861,
+      "recall": 0.104,
+      "f1_score": 0.1881,
       "confusion_matrix": {
-        "TN": 28870,
-        "FP": 45,
-        "FN": 409,
-        "TP": 177
+        "TN": 28817,
+        "FP": 1,
+        "FN": 612,
+        "TP": 71
       }
     },
     "PAYMENT": {
-      "total": 30646,
-      "fraud_count": 152,
-      "pr_auc": 0.2277,
-      "precision": 0.4754,
-      "recall": 0.1908,
-      "f1": 0.2723,
+      "total_records": 30646,
+      "fraud_count": 0,
+      "reconciled_ground_truth_frauds": 0,
+      "pr_auc": "N/A (0 frauds)",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
       "confusion_matrix": {
-        "TN": 30462,
-        "FP": 32,
-        "FN": 123,
-        "TP": 29
+        "TN": 30646,
+        "FP": 0,
+        "FN": 0,
+        "TP": 0
       }
     },
     "CASH_IN": {
-      "total": 20993,
-      "fraud_count": 121,
-      "pr_auc": 0.1912,
-      "precision": 0.451,
-      "recall": 0.1901,
-      "f1": 0.2674,
+      "total_records": 20993,
+      "fraud_count": 0,
+      "reconciled_ground_truth_frauds": 0,
+      "pr_auc": "N/A (0 frauds)",
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
       "confusion_matrix": {
-        "TN": 20844,
-        "FP": 28,
-        "FN": 98,
-        "TP": 23
+        "TN": 20993,
+        "FP": 0,
+        "FN": 0,
+        "TP": 0
       }
     },
     "DEBIT": {
-      "total": 715,
-      "fraud_count": 8,
-      "pr_auc": 0.5758,
+      "total_records": 715,
+      "fraud_count": 0,
+      "reconciled_ground_truth_frauds": 0,
+      "pr_auc": "N/A (0 frauds)",
       "precision": 1.0,
-      "recall": 0.375,
-      "f1": 0.5455,
+      "recall": 1.0,
+      "f1_score": 1.0,
       "confusion_matrix": {
-        "TN": 707,
+        "TN": 715,
         "FP": 0,
-        "FN": 5,
-        "TP": 3
+        "FN": 0,
+        "TP": 0
       }
     }
   },
-  "comparison_vs_xgboost": {
-    "xgboost_baseline": {
-      "model": "XGBoost (Tabular Balance-Depletion Engine)",
-      "pr_auc": 0.9993,
-      "precision": 0.9993,
-      "recall": 0.9993,
-      "f1": 0.9993,
-      "key_strength": "Executes single-transaction pre-auth ledger check in 1.1ms; captures exact balance liquidation (amount == oldbalanceOrg).",
-      "key_blindspot": "Completely blind to network structures, account fan-in, or mule intermediaries."
+  "comparable_latency_benchmarks": {
+    "hardware_environment": "Windows 11 CPU (Intel/AMD x86_64, 8GB RAM)",
+    "timing_method": "time.perf_counter() with 50-run warmup",
+    "single_transaction_batch_size_1": {
+      "xgboost": {
+        "feature_construction": {
+          "mean_ms": 11.556,
+          "median_p50_ms": 11.014,
+          "p95_ms": 16.043,
+          "p99_ms": 20.51
+        },
+        "model_inference": {
+          "mean_ms": 0.96,
+          "median_p50_ms": 0.921,
+          "p95_ms": 1.26,
+          "p99_ms": 1.494
+        },
+        "total_end_to_end": {
+          "mean_ms": 12.516,
+          "median_p50_ms": 11.943,
+          "p95_ms": 17.14,
+          "p99_ms": 21.728
+        }
+      },
+      "gnn_graphsage": {
+        "feature_and_edge_indexing": {
+          "mean_ms": 0.124,
+          "median_p50_ms": 0.109,
+          "p95_ms": 0.234,
+          "p99_ms": 0.287
+        },
+        "model_inference": {
+          "mean_ms": 667.049,
+          "median_p50_ms": 649.432,
+          "p95_ms": 839.589,
+          "p99_ms": 973.508
+        },
+        "total_end_to_end": {
+          "mean_ms": 667.173,
+          "median_p50_ms": 649.586,
+          "p95_ms": 839.733,
+          "p99_ms": 973.639
+        }
+      }
     },
-    "gnn_graphsage": {
-      "model": "PyG GraphSAGE (Relational Account Network Engine)",
-      "pr_auc": 0.4448,
-      "precision": 0.7796,
-      "recall": 0.3133,
-      "f1": 0.447,
-      "key_strength": "Learns structural inductive node embeddings from historical transaction topology; aggregates multi-hop account degrees and transaction volumes.",
-      "key_blindspot": "Requires graph indexing and message passing over neighborhoods; slightly lower raw single-transaction PR-AUC on PaySim because PaySim synthetic fraud lacks dense multi-hop fraud rings."
+    "batch_inference_1000_txns": {
+      "xgboost": {
+        "feature_construction_total_ms": 14.58,
+        "inference_total_ms": 11.69,
+        "total_batch_ms": 26.27,
+        "per_transaction_ms": 0.0263
+      },
+      "gnn_graphsage": {
+        "inference_total_ms": 708.83,
+        "per_transaction_ms": 0.7088
+      }
     }
   },
-  "topology_analysis": {
-    "unique_transfer_recipients": 8883,
-    "unique_cashout_senders": 29501,
-    "mule_bridge_accounts_identified": 0,
-    "paysim_synthetic_limitation": "PaySim generates transactions via independent agent rules where fraud consists of an unauthorized TRANSFER followed by CASH_OUT. It does not simulate dense cyclic laundering rings (A->B->C->A). Thus, graph topology provides complementary network volume signals but is bounded by the synthetic simulator design."
+  "topology_finding": {
+    "discovered_mule_chains_in_test_set": 0,
+    "illustration_clarification": "The 2-hop money mule path (Victim -> Mule -> Cash-out) presented in Figure 14 is a CONCEPTUAL ARCHITECTURAL ILLUSTRATION of mobile-money fraud mechanics. In PaySim synthetic data, transactions are generated as disjoint pairs, meaning accounts do not participate in multi-hop chains within the simulation. Ring detection is not claimed on PaySim.",
+    "synthetic_limitation": "PaySim generates random account strings per transaction, preventing dense cycle formation. The GNN's value lies in inductive structural node embeddings and neighbor degree aggregation."
   },
   "resource_profile": {
-    "peak_memory_mb": 858.64,
-    "memory_delta_mb": 467.91,
-    "total_eval_time_s": 2.68,
-    "inference_time_s": 0.86,
-    "per_transaction_latency_ms": 0.0095
+    "peak_memory_mb": 1138.48,
+    "memory_delta_mb": 743.33,
+    "total_runtime_seconds": 383.74
   }
 }
