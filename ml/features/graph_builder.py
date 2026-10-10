@@ -190,14 +190,130 @@ class SentinelGraphBuilder:
         self.is_fitted = True
         return data, df_aligned, metadata
 
+    def get_current_node_features(self) -> torch.Tensor:
+        """
+        Builds the node feature tensor strictly from currently settled historical counters.
+        Guarantees that no future transactions leak into node features.
+        """
+        n_unique_nodes = len(self.idx_to_node)
+        is_merchant = np.array([1.0 if n.startswith("M") else 0.0 for n in self.idx_to_node], dtype=np.float32)
+        node_in_deg = np.array([self.in_degrees.get(idx, 0.0) for idx in range(n_unique_nodes)], dtype=np.float32)
+        node_out_deg = np.array([self.out_degrees.get(idx, 0.0) for idx in range(n_unique_nodes)], dtype=np.float32)
+        node_in_vol = np.array([self.in_volume.get(idx, 0.0) for idx in range(n_unique_nodes)], dtype=np.float32)
+        node_out_vol = np.array([self.out_volume.get(idx, 0.0) for idx in range(n_unique_nodes)], dtype=np.float32)
+
+        node_features = np.column_stack([
+            is_merchant,
+            np.log1p(node_in_deg),
+            np.log1p(node_out_deg),
+            np.log1p(node_in_vol),
+            np.log1p(node_out_vol)
+        ]).astype(np.float32)
+        return torch.tensor(node_features, dtype=torch.float)
+
+    def build_step_candidate_edges(self, df_step: pd.DataFrame, update_state: bool = False):
+        """
+        Processes candidate transactions for a specific time step or window.
+        1. Maps accounts to stable contiguous indices (creating new ones if unseen).
+        2. Queries pre-authorization prior degree and volume strictly BEFORE these transactions settle.
+        3. Constructs the 15 edge attributes.
+        4. If update_state is True, updates running counters AFTER recording all prior attributes.
+        Returns: (q_edge, q_attr, labels, df_aligned)
+        """
+        df_aligned = df_step.reset_index(drop=True)
+        n_txns = len(df_aligned)
+        src_nodes = df_aligned["nameOrig"].astype(str).values
+        dst_nodes = df_aligned["nameDest"].astype(str).values
+        amounts = df_aligned["amount"].values.astype(np.float32)
+
+        src_indices = np.zeros(n_txns, dtype=np.int64)
+        dst_indices = np.zeros(n_txns, dtype=np.int64)
+
+        src_prior_out_deg = np.zeros(n_txns, dtype=np.float32)
+        src_prior_out_vol = np.zeros(n_txns, dtype=np.float32)
+        dst_prior_in_deg = np.zeros(n_txns, dtype=np.float32)
+        dst_prior_in_vol = np.zeros(n_txns, dtype=np.float32)
+
+        for i in range(n_txns):
+            u = self.get_or_create_node_id(src_nodes[i])
+            v = self.get_or_create_node_id(dst_nodes[i])
+            src_indices[i] = u
+            dst_indices[i] = v
+
+            src_prior_out_deg[i] = self.out_degrees.get(u, 0.0)
+            src_prior_out_vol[i] = self.out_volume.get(u, 0.0)
+            dst_prior_in_deg[i] = self.in_degrees.get(v, 0.0)
+            dst_prior_in_vol[i] = self.in_volume.get(v, 0.0)
+
+        if update_state:
+            for i in range(n_txns):
+                u = src_indices[i]
+                v = dst_indices[i]
+                amt_i = float(amounts[i])
+                self.out_degrees[u] = self.out_degrees.get(u, 0.0) + 1.0
+                self.out_volume[u] = self.out_volume.get(u, 0.0) + amt_i
+                self.in_degrees[v] = self.in_degrees.get(v, 0.0) + 1.0
+                self.in_volume[v] = self.in_volume.get(v, 0.0) + amt_i
+
+        amt_log = np.log1p(np.maximum(0.0, amounts))
+        orig_bal_log = np.log1p(np.maximum(0.0, df_aligned["oldbalanceOrg"].values.astype(np.float32)))
+        dest_bal_log = np.log1p(np.maximum(0.0, df_aligned["oldbalanceDest"].values.astype(np.float32)))
+        amt_ratio = amounts / (df_aligned["oldbalanceOrg"].values.astype(np.float32) + 1.0)
+
+        steps = df_aligned["step"].values.astype(np.int64)
+        hour = (steps % 24).astype(np.float32)
+        day = ((steps // 24) % 7).astype(np.float32)
+
+        tx_types = df_aligned["type"].values.astype(str)
+        type_encs = [(tx_types == t).astype(np.float32) for t in TRANSACTION_TYPES]
+
+        edge_features = np.column_stack([
+            amt_log,
+            orig_bal_log,
+            dest_bal_log,
+            amt_ratio,
+            hour,
+            day,
+            *type_encs,
+            np.log1p(src_prior_out_deg),
+            np.log1p(src_prior_out_vol),
+            np.log1p(dst_prior_in_deg),
+            np.log1p(dst_prior_in_vol)
+        ]).astype(np.float32)
+
+        labels = df_aligned["isFraud"].values.astype(np.float32) if "isFraud" in df_aligned.columns else np.zeros(n_txns, dtype=np.float32)
+
+        q_edge = torch.tensor(np.vstack([src_indices, dst_indices]), dtype=torch.long)
+        q_attr = torch.tensor(edge_features, dtype=torch.float)
+        y = torch.tensor(labels, dtype=torch.float)
+
+        return q_edge, q_attr, y, df_aligned
+
+    def settle_step_transactions(self, q_edge: torch.Tensor, amounts: np.ndarray):
+        """
+        Settles candidate transactions into the historical graph state.
+        Must be called strictly AFTER predictions have been generated for step s.
+        """
+        n_txns = q_edge.shape[1]
+        src_indices = q_edge[0].numpy()
+        dst_indices = q_edge[1].numpy()
+        for i in range(n_txns):
+            u = int(src_indices[i])
+            v = int(dst_indices[i])
+            amt_i = float(amounts[i])
+            self.out_degrees[u] = self.out_degrees.get(u, 0.0) + 1.0
+            self.out_volume[u] = self.out_volume.get(u, 0.0) + amt_i
+            self.in_degrees[v] = self.in_degrees.get(v, 0.0) + 1.0
+            self.in_volume[v] = self.in_volume.get(v, 0.0) + amt_i
+
     def save_state(self, filepath: Path):
         with open(filepath, "w") as f:
             json.dump({
                 "node_to_idx": self.node_to_idx,
-                "in_degrees": self.in_degrees,
-                "out_degrees": self.out_degrees,
-                "in_volume": self.in_volume,
-                "out_volume": self.out_volume
+                "in_degrees": {str(int(k)): float(v) for k, v in self.in_degrees.items()},
+                "out_degrees": {str(int(k)): float(v) for k, v in self.out_degrees.items()},
+                "in_volume": {str(int(k)): float(v) for k, v in self.in_volume.items()},
+                "out_volume": {str(int(k)): float(v) for k, v in self.out_volume.items()}
             }, f)
 
     @classmethod

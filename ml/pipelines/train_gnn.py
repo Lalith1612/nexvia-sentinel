@@ -18,6 +18,10 @@ from sklearn.metrics import average_precision_score, f1_score, precision_score, 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(PROJECT_ROOT))
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+except Exception:
+    pass
 
 from ml.features.graph_builder import SentinelGraphBuilder, NODE_FEATURE_NAMES, EDGE_FEATURE_NAMES
 from ml.models.gnn_model import SentinelGraphSAGE
@@ -36,10 +40,52 @@ MODEL_SAVE_PATH = MODELS_DIR / "gnn_graphsage.pt"
 MAPPING_SAVE_PATH = MODELS_DIR / "graph_node_mapping.json"
 CONFIG_SAVE_PATH = MODELS_DIR / "gnn_config.json"
 
+def prepare_causal_training_windows(
+    train_df: pd.DataFrame,
+    builder: SentinelGraphBuilder = None,
+    window_size: int = 25,
+    max_steps: int = 500
+):
+    """
+    Constructs chronological training windows enforcing strict causal ordering:
+    1. Candidate edge registration & pre-authorization edge features without state update.
+    2. Historical node features derived strictly from counters settled prior to current window.
+    3. Transactions settled into history only AFTER capturing prior window features.
+    """
+    if builder is None:
+        builder = SentinelGraphBuilder()
+
+    num_windows = max_steps // window_size
+    windows = [(i * window_size + 1, (i + 1) * window_size) for i in range(num_windows)]
+    window_data = []
+    hist_edges = torch.empty((2, 0), dtype=torch.long)
+    total_fraud_edges = 0
+    total_legit_edges = 0
+
+    for w_idx, (s_start, s_end) in enumerate(windows):
+        df_w = train_df[(train_df["step"] >= s_start) & (train_df["step"] <= s_end)]
+        if len(df_w) == 0:
+            continue
+        # 1. Candidate edge registration & pre-authorization features without state update
+        q_edge, q_attr, y_w, _ = builder.build_step_candidate_edges(df_w, update_state=False)
+        # 2. Historical node features strictly prior to window w
+        x_w = builder.get_current_node_features()
+        # 3. Store window data: (x prior to w, edges settled prior to w, candidate query edges, candidate edge attrs, labels)
+        window_data.append((x_w, hist_edges.clone(), q_edge, q_attr, y_w))
+        # 4. Settle transactions into history strictly after window state is captured
+        builder.settle_step_transactions(q_edge, df_w["amount"].values)
+        hist_edges = torch.cat([hist_edges, q_edge], dim=1)
+        total_fraud_edges += int((y_w == 1.0).sum())
+        total_legit_edges += int((y_w == 0.0).sum())
+
+    return window_data, builder, hist_edges, total_fraud_edges, total_legit_edges
+
+
 def train_gnn():
     start_time = time.perf_counter()
     process = psutil.Process()
     initial_mem_mb = process.memory_info().rss / (1024 * 1024)
+
     print("=" * 80)
     print("SENTINEL PYTORCH GEOMETRIC GNN TRAINING PIPELINE (LEAKAGE-FREE)")
     print(f"Initial Process Memory: {initial_mem_mb:.2f} MB")
@@ -52,19 +98,25 @@ def train_gnn():
     print(f"  Train Transactions : {len(train_df):,} ({int((train_df['isFraud']==1).sum()):,} frauds)")
     print(f"  Val Transactions   : {len(val_df):,} ({int((val_df['isFraud']==1).sum()):,} frauds)")
 
-    # 2. Build Graphs with running temporal state (Train -> Val)
-    print("\n[TRAIN_GNN 2/5] Building temporal graph structures without lookahead...")
-    builder = SentinelGraphBuilder()
-    train_data, train_aligned_df, train_meta = builder.build_graph_data(train_df, update_state=True)
-    val_data, val_aligned_df, val_meta = builder.build_graph_data(val_df, update_state=True)
+    # 2. Precompute 20 Causal Temporal Training Windows (Steps 1-500)
+    print("\n[TRAIN_GNN 2/5] Constructing 20 chronological causal training windows without future leakage...")
+    t_pre_start = time.perf_counter()
+    window_data, builder, hist_edges, total_fraud_edges, total_legit_edges = prepare_causal_training_windows(
+        train_df=train_df, window_size=25, max_steps=500
+    )
+    print(f"  Precomputed {len(window_data)} causal windows in {time.perf_counter() - t_pre_start:.2f}s")
+    print(f"  Indexed {len(builder.idx_to_node):,} unique training accounts across steps 1-500.")
 
-    post_graph_mem_mb = process.memory_info().rss / (1024 * 1024)
-    print(f"  Graph Memory Usage : {post_graph_mem_mb - initial_mem_mb:.2f} MB (Total: {post_graph_mem_mb:.2f} MB)")
+    # Validation Graph Setup: inherits settled training history (steps 1-500)
+    val_data, val_aligned_df, val_meta = builder.build_graph_data(val_df, update_state=False)
+    val_x = val_data.x
+    val_edge_index = val_data.edge_index
+    val_edge_attr = val_data.edge_attr
+    val_y_np = val_data.y.numpy()
 
     # 3. Model & Loss Setup
-    print("\n[TRAIN_GNN 3/5] Initializing SentinelGraphSAGE model...")
+    print("\n[TRAIN_GNN 3/5] Initializing SentinelGraphSAGE model for causal temporal training...")
     device = torch.device("cpu")
-    print(f"  Compute Device: {device}")
 
     model = SentinelGraphSAGE(
         node_in_channels=len(NODE_FEATURE_NAMES),
@@ -74,33 +126,19 @@ def train_gnn():
         dropout=0.2
     ).to(device)
 
-    # Class imbalance weighting
-    n_pos = train_meta["fraud_edges"]
-    n_neg = train_meta["legit_edges"]
-    pos_weight_val = float(n_neg / max(1, n_pos))
+    pos_weight_val = float(total_legit_edges / max(1, total_fraud_edges))
     pos_weight = torch.tensor([pos_weight_val], dtype=torch.float, device=device)
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.005, weight_decay=1e-5)
 
     print(f"  Computed pos_weight for BCE Loss: {pos_weight_val:.2f}")
 
-    # Move tensors to device
-    train_x = train_data.x.to(device)
-    train_edge_index = train_data.edge_index.to(device)
-    train_edge_attr = train_data.edge_attr.to(device)
-    train_y = train_data.y.to(device)
-
-    val_x = val_data.x.to(device)
-    val_edge_index = val_data.edge_index.to(device)
-    val_edge_attr = val_data.edge_attr.to(device)
-    val_y_np = val_data.y.numpy()
-
-    # 4. Training Loop with Validation Monitoring
-    print("\n[TRAIN_GNN 4/5] Training for 25 epochs with PR-AUC validation tracking...")
-    num_epochs = 25
+    # 4. Training Loop with Causal Temporal Windows & Validation Monitoring
+    print("\n[TRAIN_GNN 4/5] Training for up to 20 epochs across causal windows with early stopping...")
+    num_epochs = 20
     best_val_pr_auc = 0.0
     best_epoch = 0
-    patience = 8
+    patience = 6
     patience_counter = 0
 
     epoch_history = []
@@ -108,37 +146,46 @@ def train_gnn():
     for epoch in range(1, num_epochs + 1):
         t_epoch_start = time.perf_counter()
         model.train()
-        optimizer.zero_grad()
+        epoch_loss = 0.0
+        n_batches = 0
 
-        # Forward pass on training graph
-        logits = model(train_x, train_edge_index, train_edge_attr)
-        loss = criterion(logits, train_y)
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0)
-        optimizer.step()
+        for x_w, e_w, q_edge, q_attr, y_w in window_data:
+            optimizer.zero_grad()
+            # Causal forward pass: message passing strictly on edges settled prior to window (e_w)
+            dummy_attr = torch.empty((e_w.shape[1], len(EDGE_FEATURE_NAMES)), dtype=torch.float)
+            logits = model(x_w, e_w, dummy_attr, query_edge_index=q_edge, query_edge_attr=q_attr)
+            loss = criterion(logits, y_w)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=2.0)
+            optimizer.step()
+            epoch_loss += loss.item()
+            n_batches += 1
 
-        # Validation evaluation
+        avg_loss = epoch_loss / max(1, n_batches)
+
+        # Validation evaluation using historical training edges for message passing
         model.eval()
         with torch.no_grad():
-            val_probs = model.predict_proba(val_x, val_edge_index, val_edge_attr).numpy()
+            val_logits = model(val_x, hist_edges, torch.empty((hist_edges.shape[1], len(EDGE_FEATURE_NAMES))),
+                               query_edge_index=val_edge_index, query_edge_attr=val_edge_attr)
+            val_probs = torch.sigmoid(val_logits).numpy()
             val_pr_auc = float(average_precision_score(val_y_np, val_probs))
 
         t_epoch = time.perf_counter() - t_epoch_start
         epoch_history.append({
             "epoch": epoch,
-            "train_loss": round(float(loss.item()), 4),
+            "train_loss": round(avg_loss, 4),
             "val_pr_auc": round(val_pr_auc, 4),
             "epoch_time_s": round(t_epoch, 2)
         })
 
-        if epoch % 5 == 0 or epoch == 1 or val_pr_auc > best_val_pr_auc:
-            print(f"  Epoch {epoch:2d}/{num_epochs:2d} | Train Loss: {loss.item():.4f} | Val PR-AUC: {val_pr_auc:.4f} | Time: {t_epoch:.2f}s")
+        if epoch % 2 == 0 or epoch == 1 or val_pr_auc > best_val_pr_auc:
+            print(f"  Epoch {epoch:2d}/{num_epochs:2d} | Train Loss: {avg_loss:.4f} | Val PR-AUC: {val_pr_auc:.4f} | Time: {t_epoch:.2f}s")
 
         if val_pr_auc > best_val_pr_auc:
             best_val_pr_auc = val_pr_auc
             best_epoch = epoch
             patience_counter = 0
-            # Save checkpoint
             torch.save(model.state_dict(), MODEL_SAVE_PATH)
         else:
             patience_counter += 1
@@ -152,7 +199,9 @@ def train_gnn():
     model.eval()
 
     with torch.no_grad():
-        final_val_probs = model.predict_proba(val_x, val_edge_index, val_edge_attr).numpy()
+        dummy_hist_attr = torch.empty((hist_edges.shape[1], len(EDGE_FEATURE_NAMES)), dtype=torch.float)
+        final_val_logits = model(val_x, hist_edges, dummy_hist_attr, query_edge_index=val_edge_index, query_edge_attr=val_edge_attr)
+        final_val_probs = torch.sigmoid(final_val_logits).numpy()
 
     best_thresh = 0.50
     best_f1 = 0.0
