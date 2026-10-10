@@ -1,0 +1,53 @@
+{
+  "model_type": "XGBoost Classifier",
+  "library_version": "3.2.0",
+  "hyperparameters": {
+    "n_estimators": 350,
+    "max_depth": 6,
+    "learning_rate": 0.08,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+    "scale_pos_weight": 35.937780974644845,
+    "random_state": 42,
+    "tree_method": "hist",
+    "n_jobs": -1
+  },
+  "best_iteration": 4,
+  "scale_pos_weight": 35.9378,
+  "feature_count": 20,
+  "features": [
+    "amount",
+    "log_amount",
+    "oldbalanceOrg",
+    "log_oldbalanceOrg",
+    "oldbalanceDest",
+    "log_oldbalanceDest",
+    "amount_to_oldbalance_ratio",
+    "orig_balance_depletion",
+    "orig_oldbalance_is_zero",
+    "dest_oldbalance_is_zero",
+    "is_dest_merchant",
+    "expected_newbalance_orig",
+    "orig_deficit",
+    "hour_of_day",
+    "day_of_week",
+    "type_CASH_IN",
+    "type_CASH_OUT",
+    "type_DEBIT",
+    "type_PAYMENT",
+    "type_TRANSFER"
+  ],
+  "validation_metrics": {
+    "pr_auc": 1.0,
+    "optimal_threshold": 0.62,
+    "f1_at_optimal_threshold": 1.0,
+    "precision_at_optimal_threshold": 1.0,
+    "recall_at_optimal_threshold": 1.0
+  },
+  "threshold_tiers": {
+    "critical": 0.85,
+    "high": 0.65,
+    "medium": 0.62,
+    "low": 0.2
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "evaluation_dataset": "Holdout Test Partition (test.parquet)",
+  "step_range": "621 to 743",
+  "total_test_records": 90829,
+  "test_fraud_count": 1366,
+  "test_fraud_prevalence_pct": 1.5039,
+  "primary_metric_pr_auc": {
+    "name": "Average Precision (PR-AUC)",
+    "definition": "Area under the Precision-Recall curve computed as weighted mean of precisions: AP = sum_n (R_n - R_{n-1}) P_n",
+    "score": 0.9993
+  },
+  "roc_auc": 0.9994,
+  "operational_threshold_chosen": {
+    "threshold": 0.62,
+    "precision": 0.9993,
+    "recall": 0.9993,
+    "f1_score": 0.9993,
+    "confusion_matrix": {
+      "true_negatives": 89462,
+      "false_positives": 1,
+      "false_negatives": 1,
+      "true_positives": 1365
+    }
+  },
+  "default_threshold_0_50": {
+    "threshold": 0.5,
+    "precision": 0.9667,
+    "recall": 0.9993,
+    "f1_score": 0.9827,
+    "confusion_matrix": {
+      "true_negatives": 89416,
+      "false_positives": 47,
+      "false_negatives": 1,
+      "true_positives": 1365
+    }
+  },
+  "baseline_comparison": {
+    "model": "Majority-Class Predictor (Predict 0 for all)",
+    "accuracy": 98.5,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1_score": 0.0,
+    "pr_auc": 0.015,
+    "finding": "Majority baseline achieves 98.50% raw accuracy by ignoring all frauds (0% recall, 0.015 PR-AUC). XGBoost achieves genuine discriminative power."
+  },
+  "latency_benchmark": {
+    "methodology": "500 independent single-transaction end-to-end pipeline evaluations (dict -> feature extraction -> model inference)",
+    "unit": "milliseconds",
+    "single_transaction": {
+      "mean_ms": 12.576,
+      "p50_median_ms": 12.349,
+      "p95_ms": 13.222,
+      "p99_ms": 14.126
+    },
+    "batch_inference": {
+      "batch_size": 1000,
+      "total_batch_time_ms": 3.19,
+      "time_per_transaction_ms": 0.0032
+    }
+  },
+  "top_features_by_gain": [
+    {
+      "feature": "orig_balance_depletion",
+      "gain": 28461.69
+    },
+    {
+      "feature": "expected_newbalance_orig",
+      "gain": 24445.2
+    },
+    {
+      "feature": "orig_deficit",
+      "gain": 12699.78
+    },
+    {
+      "feature": "amount_to_oldbalance_ratio",
+      "gain": 3575.56
+    },
+    {
+      "feature": "type_PAYMENT",
+      "gain": 635.31
+    },
+    {
+      "feature": "amount",
+      "gain": 612.89
+    },
+    {
+      "feature": "log_amount",
+      "gain": 463.09
+    },
+    {
+      "feature": "log_oldbalanceOrg",
+      "gain": 289.02
+    },
+    {
+      "feature": "is_dest_merchant",
+      "gain": 249.49
+    },
+    {
+      "feature": "oldbalanceOrg",
+      "gain": 209.06
+    }
+  ],
+  "temporal_prevalence_shift": {
+    "train_steps_1_500_pct": 0.0917,
+    "val_steps_501_620_pct": 0.6124,
+    "test_steps_621_743_pct": 1.5039,
+    "observation": "Fraud prevalence naturally rises in latter simulation periods as legitimate background volume drops while fraud attacks persist. Chronological splitting properly exposed this shift."
+  }
+}

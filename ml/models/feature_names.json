@@ -1,0 +1,22 @@
+[
+  "amount",
+  "log_amount",
+  "oldbalanceOrg",
+  "log_oldbalanceOrg",
+  "oldbalanceDest",
+  "log_oldbalanceDest",
+  "amount_to_oldbalance_ratio",
+  "orig_balance_depletion",
+  "orig_oldbalance_is_zero",
+  "dest_oldbalance_is_zero",
+  "is_dest_merchant",
+  "expected_newbalance_orig",
+  "orig_deficit",
+  "hour_of_day",
+  "day_of_week",
+  "type_CASH_IN",
+  "type_CASH_OUT",
+  "type_DEBIT",
+  "type_PAYMENT",
+  "type_TRANSFER"
+]

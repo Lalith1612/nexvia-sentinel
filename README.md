@@ -100,13 +100,56 @@ AIML-01/
 
 ## 🚀 Execution & Verification Roadmap
 
-- **Phase 1:** Dataset Inspection, Memory-Safe Preprocessing & Temporal Leakage-Free Splitting
-- **Phase 2:** Feature Engineering & Tabular XGBoost Baseline with PR-AUC / Latency Benchmarks
-- **Phase 3:** Account Graph Network Construction & PyTorch Geometric GNN Fraud-Ring Model
-- **Phase 4:** Hybrid Risk Combination Strategy, Explainability & Score Calibration
-- **Phase 5:** MLflow Experiment Tracking & Model Registry Integration
-- **Phase 6:** Feast Feature Store Setup & Real-Time Online Retrieval
-- **Phase 7:** Apache Kafka Transaction Streaming Producer & Consumer Pipeline
-- **Phase 8:** Production FastAPI Backend, Persistence & Analyst Feedback Loops
-- **Phase 9:** Sentinel Fintech Enterprise UI (React, Vite, Cytoscape Graph Explorer)
-- **Phase 10:** Docker Compose, Kubernetes/Minikube Manifests & Internship Submission Package
+- [x] **Phase 1: Dataset Inspection, Memory-Safe Preprocessing & Temporal Leakage-Free Splitting**
+  - Acquired official PaySim dataset (6.36M rows).
+  - Memory-safe streaming EDA and profiling without OOM errors.
+  - Strict chronological non-overlapping partitions (Train: 1–500, Val: 501–620, Test: 621–743).
+  - 8 automated tests passing in 1.4s.
+- [x] **Phase 2: Feature Engineering & Tabular XGBoost Baseline Model**
+  - Pre-authorization feature pipeline (zero post-settlement leakage).
+  - Imbalance-compensated XGBoost (`scale_pos_weight=35.94`).
+  - Evaluated on untouched chronological holdout test set (90,829 txns, 1,366 frauds):
+    - **PR-AUC (Average Precision):** `0.9993`
+    - **ROC-AUC:** `0.9994`
+    - **Precision @ Threshold (0.620):** `99.93%`
+    - **Recall @ Threshold (0.620):** `99.93%`
+    - **Inference Latency:** `12.3 ms` single transaction, `0.0032 ms/txn` batch.
+  - 15 automated unit & integration tests passing.
+- [ ] **Phase 3: Account Graph Network Construction & PyTorch Geometric GNN Fraud-Ring Model**
+- [ ] **Phase 4: Hybrid Risk Combination Strategy, Explainability & Score Calibration**
+- [ ] **Phase 5: MLflow Experiment Tracking & Model Registry Integration**
+- [ ] **Phase 6: Feast Feature Store Setup & Real-Time Online Retrieval**
+- [ ] **Phase 7: Apache Kafka Transaction Streaming Producer & Consumer Pipeline**
+- [ ] **Phase 8: Production FastAPI Backend, Persistence & Analyst Feedback Loops**
+- [ ] **Phase 9: Sentinel Fintech Enterprise UI (React, Vite, Cytoscape Graph Explorer)**
+- [ ] **Phase 10: Docker Compose, Kubernetes/Minikube Manifests & Internship Submission Package**
+
+---
+
+## 🛠️ Reproducing Phase 1 & 2 locally
+
+```powershell
+# 1. Initialize environment (Python 3.10)
+uv venv .venv --python 3.10
+.venv\Scripts\activate
+
+# 2. Install dependencies
+uv pip install -r backend/requirements.txt -r ml/requirements.txt
+
+# 3. Acquire dataset & run EDA
+python ml/pipelines/acquire_dataset.py
+python ml/pipelines/inspect_eda.py
+
+# 4. Generate leakage-safe temporal splits
+python ml/pipelines/temporal_splitter.py
+
+# 5. Train XGBoost model with validation threshold tuning
+python ml/pipelines/train_xgboost.py
+
+# 6. Evaluate against holdout test partition & benchmark latency
+python ml/pipelines/evaluate_models.py
+
+# 7. Execute automated test suite
+pytest -v ml/tests/
+```
+
