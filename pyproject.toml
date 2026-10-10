@@ -1,0 +1,38 @@
+[project]
+name = "sentinel-fraud-detection"
+version = "0.1.0"
+description = "Sentinel: Real-Time Financial Fraud Detection Platform combining XGBoost, PyTorch Geometric, Feast, Kafka, and FastAPI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.28.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.2.0",
+    "sqlalchemy>=2.0.28",
+    "aiosqlite>=0.20.0",
+    "asyncpg>=0.29.0",
+    "psycopg2-binary>=2.9.9",
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    "scipy>=1.12.0",
+    "scikit-learn>=1.4.0",
+    "xgboost>=2.0.3",
+    "torch>=2.2.0",
+    "torch-geometric>=2.5.0",
+    "networkx>=3.2.1",
+    "feast>=0.37.0",
+    "mlflow>=2.11.0",
+    "evidently>=0.4.18",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.1",
+    "prometheus-client>=0.20.0",
+    "websockets>=12.0",
+    "confluent-kafka>=2.3.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.5",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"

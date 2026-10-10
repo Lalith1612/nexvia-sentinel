@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+.venv
+venv/
+ENV/
+env/
+
+# MLflow & Experiments
+mlruns/
+.mlflow/
+
+# Evidently
+monitoring_reports/
+*.html
+
+# Feast
+feature_store/data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Node & Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# Logs and databases
+*.log
+data/raw/
+*.parquet
+*.csv
+
+# Environment & IDE
+.env
+.DS_Store
+.idea/
+.vscode/
+Thumbs.db
