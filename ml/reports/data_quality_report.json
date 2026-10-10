@@ -1,0 +1,131 @@
+{
+  "dataset_name": "PaySim Synthetic Financial Datasets For Fraud Detection",
+  "file_name": "PS_20174392719_1491204439457_log.csv",
+  "total_transactions": 6362620,
+  "total_columns": 11,
+  "columns": [
+    "step",
+    "type",
+    "amount",
+    "nameOrig",
+    "oldbalanceOrg",
+    "newbalanceOrig",
+    "nameDest",
+    "oldbalanceDest",
+    "newbalanceDest",
+    "isFraud",
+    "isFlaggedFraud"
+  ],
+  "missing_values": {
+    "step": 0,
+    "type": 0,
+    "amount": 0,
+    "nameOrig": 0,
+    "oldbalanceOrg": 0,
+    "newbalanceOrig": 0,
+    "nameDest": 0,
+    "oldbalanceDest": 0,
+    "newbalanceDest": 0,
+    "isFraud": 0,
+    "isFlaggedFraud": 0
+  },
+  "target_distribution": {
+    "legitimate_count": 6354407,
+    "fraud_count": 8213,
+    "fraud_rate_percent": 0.1291,
+    "class_imbalance_ratio": "1 fraud per 774 transactions"
+  },
+  "legacy_rule_isFlaggedFraud": {
+    "flagged_total": 16,
+    "contingency_vs_actual_fraud": {
+      "TN": 6354407,
+      "FP": 0,
+      "FN": 8197,
+      "TP": 16
+    },
+    "legacy_rule_recall": 0.1948,
+    "legacy_rule_precision": 100.0,
+    "finding": "The rule flags only TRANSFERs > 200,000. It achieves 100% precision on the 16 flagged rows, but misses 8,197 frauds (99.8% false negative rate). Excluded from model features to avoid leakage and trivial thresholding."
+  },
+  "transaction_types": {
+    "PAYMENT": {
+      "count": 2151495,
+      "pct_of_total": 33.81,
+      "fraud_count": 0,
+      "fraud_rate_pct": 0.0
+    },
+    "CASH_OUT": {
+      "count": 2237500,
+      "pct_of_total": 35.17,
+      "fraud_count": 4116,
+      "fraud_rate_pct": 0.184
+    },
+    "CASH_IN": {
+      "count": 1399284,
+      "pct_of_total": 21.99,
+      "fraud_count": 0,
+      "fraud_rate_pct": 0.0
+    },
+    "TRANSFER": {
+      "count": 532909,
+      "pct_of_total": 8.38,
+      "fraud_count": 4097,
+      "fraud_rate_pct": 0.7688
+    },
+    "DEBIT": {
+      "count": 41432,
+      "pct_of_total": 0.65,
+      "fraud_count": 0,
+      "fraud_rate_pct": 0.0
+    }
+  },
+  "amount_statistics": {
+    "overall": {
+      "min": 0.0,
+      "max": 92445520.0,
+      "mean": 179861.9,
+      "std": 603858.18
+    },
+    "legitimate": {
+      "min": 0.01,
+      "max": 92445520.0,
+      "mean": 178197.04,
+      "std": 596236.94
+    },
+    "fraud": {
+      "min": 0.0,
+      "max": 10000000.0,
+      "mean": 1467967.28,
+      "std": 2404106.58
+    }
+  },
+  "balance_characteristics": {
+    "origin_zero_liquidation_count": 1520581,
+    "origin_zero_liquidation_pct": 23.9,
+    "destination_merchant_count": 2151495,
+    "destination_merchant_pct": 33.81,
+    "sender_balance_error_exact_zero_pct": 19.81,
+    "receiver_balance_error_exact_zero_pct": 31.77
+  },
+  "temporal_split_audit": {
+    "total_steps": 743,
+    "train_set": {
+      "steps": "1 to 500",
+      "transaction_count": 6061807,
+      "fraud_count": 5561,
+      "fraud_rate_pct": 0.0917
+    },
+    "val_set": {
+      "steps": "501 to 620",
+      "transaction_count": 209984,
+      "fraud_count": 1286,
+      "fraud_rate_pct": 0.6124
+    },
+    "test_set": {
+      "steps": "621 to 743",
+      "transaction_count": 90829,
+      "fraud_count": 1366,
+      "fraud_rate_pct": 1.5039
+    }
+  }
+}

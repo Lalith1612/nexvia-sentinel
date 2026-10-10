@@ -1,0 +1,55 @@
+{
+  "dataset": "PaySim Synthetic Financial Datasets For Fraud Detection",
+  "random_seed": 42,
+  "partitions": {
+    "train_full_universe": {
+      "step_range": "1 to 500",
+      "calendar_window": "Days 1 to 21",
+      "total_records": 6061807,
+      "fraud_count": 5561,
+      "legitimate_count": 6056246,
+      "fraud_rate_pct": 0.0917
+    },
+    "train_benchmark_sample": {
+      "file": "train_benchmark_sample.parquet",
+      "step_range": "1 to 500",
+      "sampling_strategy": "100% of all fraud instances preserved + uniform Bernoulli sampled legitimate records",
+      "total_records": 205411,
+      "fraud_count": 5561,
+      "legitimate_count": 199850,
+      "fraud_preservation_ratio": "100.0%",
+      "benchmark_fraud_rate_pct": 2.7073,
+      "purpose": "Enables responsive, memory-safe GNN graph construction and iterative XGBoost hyperparameter tuning within 8GB RAM host constraints."
+    },
+    "validation": {
+      "file": "val.parquet",
+      "step_range": "501 to 620",
+      "calendar_window": "Days 22 to 26",
+      "sampling_strategy": "None (100% complete natural temporal distribution)",
+      "total_records": 209984,
+      "fraud_count": 1286,
+      "legitimate_count": 208698,
+      "fraud_rate_pct": 0.6124
+    },
+    "test_holdout": {
+      "file": "test.parquet",
+      "step_range": "621 to 743",
+      "calendar_window": "Days 27 to 31",
+      "sampling_strategy": "None (100% complete natural temporal distribution)",
+      "total_records": 90829,
+      "fraud_count": 1366,
+      "legitimate_count": 89463,
+      "fraud_rate_pct": 1.5039,
+      "evaluation_rule": "MUST be evaluated without artificial rebalancing to reflect true production deployment performance."
+    }
+  },
+  "leakage_auditing": {
+    "isFraud_included_in_features": false,
+    "isFlaggedFraud_included_in_features": false,
+    "temporal_overlap": false,
+    "max_train_step": 500,
+    "min_val_step": 501,
+    "max_val_step": 620,
+    "min_test_step": 621
+  }
+}
