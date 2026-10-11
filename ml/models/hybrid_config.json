@@ -1,0 +1,70 @@
+{
+  "model_architecture": "Sentinel Hybrid Ensemble (XGBoost + GraphSAGE)",
+  "validation_dataset": "val.parquet (Steps 501-620)",
+  "training_protocol": "Validation data ONLY. Zero test set exposure during weight selection, calibration, or thresholding.",
+  "ensemble_weights": {
+    "tabular_xgboost": 0.78,
+    "relational_graphsage": 0.22
+  },
+  "meta_learner_parameters": {
+    "beta_xgboost": 1.6854,
+    "beta_graphsage": 0.4761,
+    "intercept": 0.5296
+  },
+  "calibration": {
+    "method": "Platt Scaling (Univariate Logistic Regression on Log-Odds)",
+    "calibrated_on": "Validation Partition (Steps 501-620)",
+    "raw_xgb_brier": 0.110304,
+    "calibrated_xgb_brier": 8.3e-05,
+    "raw_gnn_brier": 0.297037,
+    "calibrated_gnn_brier": 0.00378,
+    "calibrated_hybrid_brier": 0.000269
+  },
+  "risk_tier_thresholds": {
+    "critical": 0.8,
+    "high": 0.65,
+    "medium": 0.2,
+    "low": 0.0
+  },
+  "operational_binary_threshold": 0.65,
+  "validation_tier_summary": {
+    "CRITICAL": {
+      "threshold": ">= 0.80",
+      "volume": 702,
+      "frauds": 702,
+      "precision": 1.0,
+      "recall": 0.5458786936236392,
+      "action": "AUTOMATED_BLOCK"
+    },
+    "HIGH": {
+      "threshold": "[0.65, 0.80)",
+      "volume": 587,
+      "frauds": 584,
+      "action": "STEP_UP_AUTHENTICATION"
+    },
+    "MEDIUM": {
+      "threshold": "[0.20, 0.65)",
+      "volume": 20,
+      "frauds": 0,
+      "action": "MANUAL_ANALYST_REVIEW"
+    },
+    "LOW": {
+      "threshold": "< 0.20",
+      "volume": 208675,
+      "frauds": 0,
+      "action": "AUTOMATED_CLEAR_AND_SETTLE"
+    }
+  },
+  "tier_actions": {
+    "CRITICAL": "AUTOMATED_BLOCK",
+    "HIGH": "STEP_UP_AUTHENTICATION",
+    "MEDIUM": "MANUAL_ANALYST_REVIEW",
+    "LOW": "AUTOMATED_CLEAR_AND_SETTLE"
+  },
+  "governance_disclaimers": [
+    "PaySim Simulation Topology: Transactions are generated as synthetic disjoint pairs; genuine multi-hop money laundering chains and complex cyclic fraud rings are absent in this dataset.",
+    "Temporal Batching Resolution: Graph neural network embeddings reflect 25-hour causal training windows evaluated against hourly streaming test increments.",
+    "Attribution vs. Causal Intent: Feature and graph attributions represent statistical model sensitivities, not forensic or legal proof of fraud.",
+    "Research Prototype Status: Developed for research and educational purposes; not certified or hardened for live core-banking financial systems."
+  ]
+}

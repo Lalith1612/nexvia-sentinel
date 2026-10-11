@@ -1,0 +1,517 @@
+{
+  "evaluation_title": "Sentinel Phase 4: Hybrid Risk Combination Strategy & Explainability",
+  "evaluation_partition": "Holdout Test Partition (test.parquet, Steps 621-743)",
+  "governance_status": "Accepted as a research-prototype milestone; not certified for live production banking.",
+  "total_test_records": 90829,
+  "test_fraud_count": 1366,
+  "test_fraud_prevalence_pct": 1.5039,
+  "ensemble_architecture": {
+    "weight_tabular_xgboost": 0.78,
+    "weight_relational_graphsage": 0.22,
+    "calibration_method": "Platt Scaling (Fitted on validation partition Steps 501-620 only)",
+    "operational_binary_threshold": 0.65
+  },
+  "model_comparison": {
+    "pr_auc": {
+      "tabular_xgboost": 0.9993,
+      "relational_graphsage": 0.6366,
+      "sentinel_hybrid": 1.0
+    },
+    "roc_auc": {
+      "tabular_xgboost": 0.9994,
+      "relational_graphsage": 0.9669,
+      "sentinel_hybrid": 1.0
+    },
+    "brier_score_loss": {
+      "raw_xgboost": 0.110501,
+      "calibrated_xgboost": 0.000122,
+      "raw_graphsage": 0.303684,
+      "calibrated_graphsage": 0.008823,
+      "calibrated_hybrid": 0.000588
+    },
+    "unrounded_metrics": {
+      "hybrid_pr_auc": 0.9999706763,
+      "hybrid_roc_auc": 0.9999995336,
+      "calibrated_xgboost_brier": 0.0001215464,
+      "calibrated_hybrid_brier": 0.0005883750,
+      "calibrated_graphsage_brier": 0.0088226391,
+      "finding": "The hybrid improves ranking metrics relative to standalone GNN, but its Brier score is worse than calibrated XGBoost. Calibrated XGBoost is the best-calibrated model."
+    },
+    "operational_metrics_at_threshold_0_65": {
+      "tabular_xgboost": {
+        "precision": 0.9906,
+        "recall": 0.9993,
+        "f1_score": 0.9949,
+        "confusion_matrix": {
+          "tn": 89450,
+          "fp": 13,
+          "fn": 1,
+          "tp": 1365
+        }
+      },
+      "relational_graphsage": {
+        "precision": 1.0,
+        "recall": 0.2357,
+        "f1_score": 0.3815,
+        "confusion_matrix": {
+          "tn": 89463,
+          "fp": 0,
+          "fn": 1044,
+          "tp": 322
+        }
+      },
+      "sentinel_hybrid": {
+        "precision": 0.9993,
+        "recall": 0.9993,
+        "f1_score": 0.9993,
+        "confusion_matrix": {
+          "tn": 89462,
+          "fp": 1,
+          "fn": 1,
+          "tp": 1365
+        }
+      }
+    }
+  },
+  "multi_tier_risk_summary": {
+    "CRITICAL": {
+      "volume": 730,
+      "pct_of_total_volume": 0.804,
+      "fraud_count": 730,
+      "legitimate_count": 0,
+      "precision_pct": 100.0,
+      "recall_pct": 53.441,
+      "operational_action": "AUTOMATED_BLOCK",
+      "policy_type": "Illustrative prototype demonstration on PaySim (not validated for real banking)"
+    },
+    "HIGH": {
+      "volume": 636,
+      "pct_of_total_volume": 0.7,
+      "fraud_count": 635,
+      "legitimate_count": 1,
+      "precision_pct": 99.843,
+      "recall_pct": 46.486,
+      "operational_action": "STEP_UP_AUTHENTICATION",
+      "policy_type": "Illustrative prototype demonstration on PaySim (not validated for real banking)"
+    },
+    "MEDIUM": {
+      "volume": 12,
+      "pct_of_total_volume": 0.013,
+      "fraud_count": 0,
+      "legitimate_count": 12,
+      "precision_pct": 0.0,
+      "recall_pct": 0.0,
+      "operational_action": "MANUAL_ANALYST_REVIEW",
+      "policy_type": "Illustrative prototype demonstration on PaySim (not validated for real banking)"
+    },
+    "LOW": {
+      "volume": 89451,
+      "pct_of_total_volume": 98.483,
+      "fraud_count": 1,
+      "legitimate_count": 89450,
+      "precision_pct": 0.001,
+      "recall_pct": 0.073,
+      "operational_action": "AUTOMATED_CLEAR_AND_SETTLE",
+      "policy_type": "Illustrative prototype demonstration on PaySim (not validated for real banking)"
+    }
+  },
+  "sliced_performance_by_transaction_type": {
+    "TRANSFER": {
+      "total_records": 8974,
+      "fraud_count": 683,
+      "reconciled_ground_truth_frauds": 683,
+      "true_positives": 682,
+      "false_positives": 0,
+      "false_negatives": 1,
+      "true_negatives": 8291,
+      "false_positive_rate_pct": 0.0,
+      "precision": 1.0,
+      "recall": 0.9985358711566618,
+      "f1_score": 0.9992673992673993,
+      "pr_auc": 0.9999809578618641,
+      "roc_auc": 0.9999984106670378
+    },
+    "CASH_OUT": {
+      "total_records": 29501,
+      "fraud_count": 683,
+      "reconciled_ground_truth_frauds": 683,
+      "true_positives": 683,
+      "false_positives": 1,
+      "false_negatives": 0,
+      "true_negatives": 28817,
+      "false_positive_rate_pct": 0.0035,
+      "precision": 0.9985380116959064,
+      "recall": 1.0,
+      "f1_score": 0.9992684711046086,
+      "pr_auc": 1.0,
+      "roc_auc": 1.0
+    },
+    "PAYMENT": {
+      "total_records": 30646,
+      "fraud_count": 0,
+      "reconciled_ground_truth_frauds": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 30646,
+      "false_positive_rate_pct": 0.0,
+      "precision": "N/A (0 predicted positives)",
+      "recall": "N/A (0 ground truth frauds)",
+      "f1_score": "N/A (0 ground truth frauds)",
+      "pr_auc": "N/A (0 ground truth frauds)",
+      "roc_auc": "N/A (0 ground truth frauds)"
+    },
+    "CASH_IN": {
+      "total_records": 20993,
+      "fraud_count": 0,
+      "reconciled_ground_truth_frauds": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 20993,
+      "false_positive_rate_pct": 0.0,
+      "precision": "N/A (0 predicted positives)",
+      "recall": "N/A (0 ground truth frauds)",
+      "f1_score": "N/A (0 ground truth frauds)",
+      "pr_auc": "N/A (0 ground truth frauds)",
+      "roc_auc": "N/A (0 ground truth frauds)"
+    },
+    "DEBIT": {
+      "total_records": 715,
+      "fraud_count": 0,
+      "reconciled_ground_truth_frauds": 0,
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 715,
+      "false_positive_rate_pct": 0.0,
+      "precision": "N/A (0 predicted positives)",
+      "recall": "N/A (0 ground truth frauds)",
+      "f1_score": "N/A (0 ground truth frauds)",
+      "pr_auc": "N/A (0 ground truth frauds)",
+      "roc_auc": "N/A (0 ground truth frauds)"
+    }
+  },
+  "sample_transaction_explanations": {
+    "case_1_critical_fraud": {
+      "transaction_summary": {
+        "step": 621,
+        "type": "TRANSFER",
+        "amount": 6961359.0,
+        "oldbalanceOrg": 6961359.0,
+        "newbalanceOrig": 0.0
+      },
+      "risk_assessment": {
+        "hybrid_risk_score": 0.9258,
+        "assigned_risk_tier": "CRITICAL",
+        "recommended_action": "AUTOMATED_BLOCK",
+        "score_components": {
+          "tabular_xgb": {
+            "raw_score": 0.6688,
+            "calibrated_probability": 0.9756,
+            "ensemble_weight": 0.78,
+            "weighted_contribution": 0.761
+          },
+          "relational_gnn": {
+            "raw_score": 0.9252,
+            "calibrated_probability": 0.7494,
+            "ensemble_weight": 0.22,
+            "weighted_contribution": 0.1649
+          }
+        }
+      },
+      "tabular_shap_attributions": [
+        {
+          "feature": "orig_deficit",
+          "value": 0.0,
+          "shap_contribution": 1.2707,
+          "impact": "INCREASES_FRAUD_RISK"
+        },
+        {
+          "feature": "amount",
+          "value": 6961359.0,
+          "shap_contribution": 0.9075,
+          "impact": "INCREASES_FRAUD_RISK"
+        },
+        {
+          "feature": "orig_balance_depletion",
+          "value": 1.0,
+          "shap_contribution": 0.728,
+          "impact": "INCREASES_FRAUD_RISK"
+        },
+        {
+          "feature": "amount_to_oldbalance_ratio",
+          "value": 1.0,
+          "shap_contribution": 0.3478,
+          "impact": "INCREASES_FRAUD_RISK"
+        },
+        {
+          "feature": "expected_newbalance_orig",
+          "value": 0.0,
+          "shap_contribution": 0.1902,
+          "impact": "INCREASES_FRAUD_RISK"
+        }
+      ],
+      "graph_topological_context": {
+        "account_orig": "C1508375494",
+        "account_dest": "C1926498951",
+        "is_destination_merchant": false,
+        "raw_gnn_anomaly_score": 0.9252,
+        "calibrated_gnn_risk": 0.7494,
+        "relational_weight_in_ensemble": 0.22,
+        "orig_historical_out_degree": 0.0,
+        "orig_historical_out_volume": 0.0,
+        "dest_historical_in_degree": 0.0,
+        "dest_historical_in_volume": 0.0
+      },
+      "regulatory_disclaimers": [
+        "PaySim Simulation Topology: Transactions are generated as synthetic disjoint pairs; genuine multi-hop money laundering chains and complex cyclic fraud rings are absent in this dataset.",
+        "Temporal Batching Resolution: Graph neural network embeddings reflect 25-hour causal training windows evaluated against hourly streaming test increments.",
+        "Attribution vs. Causal Intent: Feature and graph attributions represent statistical model sensitivities, not forensic or legal proof of fraud.",
+        "Research Prototype Status: Developed for research and educational purposes; not certified or hardened for live core-banking financial systems."
+      ]
+    },
+    "case_2_high_risk_fraud": {
+      "transaction_summary": {
+        "step": 621,
+        "type": "TRANSFER",
+        "amount": 348751.4375,
+        "oldbalanceOrg": 348751.4375,
+        "newbalanceOrig": 0.0
+      },
+      "risk_assessment": {
+        "hybrid_risk_score": 0.7938,
+        "assigned_risk_tier": "HIGH",
+        "recommended_action": "STEP_UP_AUTHENTICATION",
+        "score_components": {
+          "tabular_xgb": {
+            "raw_score": 0.6688,
+            "calibrated_probability": 0.9756,
+            "ensemble_weight": 0.78,
+            "weighted_contribution": 0.761
+          },
+          "relational_gnn": {
+            "raw_score": 0.8883,
+            "calibrated_probability": 0.1492,
+            "ensemble_weight": 0.22,
+            "weighted_contribution": 0.0328
+          }
+        }
+      },
+      "tabular_shap_attributions": [
+        {
+          "feature": "orig_balance_depletion",
+          "value": 1.0,
+          "shap_contribution": 1.6024,
+          "impact": "INCREASES_FRAUD_RISK"
+        },
+        {
+          "feature": "orig_deficit",
+          "value": 0.0,
+          "shap_contribution": 1.2347,
+          "impact": "INCREASES_FRAUD_RISK"
+        },
+        {
+          "feature": "amount_to_oldbalance_ratio",
+          "value": 1.0,
+          "shap_contribution": 0.4638,
+          "impact": "INCREASES_FRAUD_RISK"
+        },
+        {
+          "feature": "expected_newbalance_orig",
+          "value": 0.0,
+          "shap_contribution": 0.462,
+          "impact": "INCREASES_FRAUD_RISK"
+        },
+        {
+          "feature": "oldbalanceOrg",
+          "value": 348751.4375,
+          "shap_contribution": 0.1179,
+          "impact": "INCREASES_FRAUD_RISK"
+        }
+      ],
+      "graph_topological_context": {
+        "account_orig": "C1707939649",
+        "account_dest": "C613081962",
+        "is_destination_merchant": false,
+        "raw_gnn_anomaly_score": 0.8883,
+        "calibrated_gnn_risk": 0.1492,
+        "relational_weight_in_ensemble": 0.22,
+        "orig_historical_out_degree": 0.0,
+        "orig_historical_out_volume": 0.0,
+        "dest_historical_in_degree": 0.0,
+        "dest_historical_in_volume": 0.0
+      },
+      "regulatory_disclaimers": [
+        "PaySim Simulation Topology: Transactions are generated as synthetic disjoint pairs; genuine multi-hop money laundering chains and complex cyclic fraud rings are absent in this dataset.",
+        "Temporal Batching Resolution: Graph neural network embeddings reflect 25-hour causal training windows evaluated against hourly streaming test increments.",
+        "Attribution vs. Causal Intent: Feature and graph attributions represent statistical model sensitivities, not forensic or legal proof of fraud.",
+        "Research Prototype Status: Developed for research and educational purposes; not certified or hardened for live core-banking financial systems."
+      ]
+    },
+    "case_3_medium_risk_review": {
+      "transaction_summary": {
+        "step": 621,
+        "type": "CASH_OUT",
+        "amount": 146979.984375,
+        "oldbalanceOrg": 146835.0,
+        "newbalanceOrig": 0.0
+      },
+      "risk_assessment": {
+        "hybrid_risk_score": 0.6142,
+        "assigned_risk_tier": "MEDIUM",
+        "recommended_action": "MANUAL_ANALYST_REVIEW",
+        "score_components": {
+          "tabular_xgb": {
+            "raw_score": 0.6104,
+            "calibrated_probability": 0.7873,
+            "ensemble_weight": 0.78,
+            "weighted_contribution": 0.6141
+          },
+          "relational_gnn": {
+            "raw_score": 0.7608,
+            "calibrated_probability": 0.0005,
+            "ensemble_weight": 0.22,
+            "weighted_contribution": 0.0001
+          }
+        }
+      },
+      "tabular_shap_attributions": [
+        {
+          "feature": "orig_balance_depletion",
+          "value": 1.0,
+          "shap_contribution": 1.2525,
+          "impact": "INCREASES_FRAUD_RISK"
+        },
+        {
+          "feature": "amount",
+          "value": 146979.9844,
+          "shap_contribution": -1.239,
+          "impact": "REDUCES_FRAUD_RISK"
+        },
+        {
+          "feature": "orig_deficit",
+          "value": 144.9844,
+          "shap_contribution": 1.1392,
+          "impact": "INCREASES_FRAUD_RISK"
+        },
+        {
+          "feature": "amount_to_oldbalance_ratio",
+          "value": 1.001,
+          "shap_contribution": -0.8712,
+          "impact": "REDUCES_FRAUD_RISK"
+        },
+        {
+          "feature": "expected_newbalance_orig",
+          "value": 0.0,
+          "shap_contribution": 0.4392,
+          "impact": "INCREASES_FRAUD_RISK"
+        }
+      ],
+      "graph_topological_context": {
+        "account_orig": "C359519263",
+        "account_dest": "C1924595636",
+        "is_destination_merchant": false,
+        "raw_gnn_anomaly_score": 0.7608,
+        "calibrated_gnn_risk": 0.0005,
+        "relational_weight_in_ensemble": 0.22,
+        "orig_historical_out_degree": 0.0,
+        "orig_historical_out_volume": 0.0,
+        "dest_historical_in_degree": 1.0,
+        "dest_historical_in_volume": 103579.82
+      },
+      "regulatory_disclaimers": [
+        "PaySim Simulation Topology: Transactions are generated as synthetic disjoint pairs; genuine multi-hop money laundering chains and complex cyclic fraud rings are absent in this dataset.",
+        "Temporal Batching Resolution: Graph neural network embeddings reflect 25-hour causal training windows evaluated against hourly streaming test increments.",
+        "Attribution vs. Causal Intent: Feature and graph attributions represent statistical model sensitivities, not forensic or legal proof of fraud.",
+        "Research Prototype Status: Developed for research and educational purposes; not certified or hardened for live core-banking financial systems."
+      ]
+    },
+    "case_4_low_risk_legitimate": {
+      "transaction_summary": {
+        "step": 621,
+        "type": "PAYMENT",
+        "amount": 3967.719970703125,
+        "oldbalanceOrg": 104027.0,
+        "newbalanceOrig": 100059.28125
+      },
+      "risk_assessment": {
+        "hybrid_risk_score": 0.0001,
+        "assigned_risk_tier": "LOW",
+        "recommended_action": "AUTOMATED_CLEAR_AND_SETTLE",
+        "score_components": {
+          "tabular_xgb": {
+            "raw_score": 0.3314,
+            "calibrated_probability": 0.0001,
+            "ensemble_weight": 0.78,
+            "weighted_contribution": 0.0001
+          },
+          "relational_gnn": {
+            "raw_score": 0.5096,
+            "calibrated_probability": 0.0,
+            "ensemble_weight": 0.22,
+            "weighted_contribution": 0.0
+          }
+        }
+      },
+      "tabular_shap_attributions": [
+        {
+          "feature": "is_dest_merchant",
+          "value": 1.0,
+          "shap_contribution": -1.5588,
+          "impact": "REDUCES_FRAUD_RISK"
+        },
+        {
+          "feature": "orig_balance_depletion",
+          "value": 0.0,
+          "shap_contribution": -1.4047,
+          "impact": "REDUCES_FRAUD_RISK"
+        },
+        {
+          "feature": "expected_newbalance_orig",
+          "value": 100059.2812,
+          "shap_contribution": -0.6126,
+          "impact": "REDUCES_FRAUD_RISK"
+        },
+        {
+          "feature": "type_PAYMENT",
+          "value": 1.0,
+          "shap_contribution": -0.3521,
+          "impact": "REDUCES_FRAUD_RISK"
+        },
+        {
+          "feature": "orig_deficit",
+          "value": 0.0,
+          "shap_contribution": 0.2403,
+          "impact": "INCREASES_FRAUD_RISK"
+        }
+      ],
+      "graph_topological_context": {
+        "account_orig": "C873560016",
+        "account_dest": "M192876103",
+        "is_destination_merchant": true,
+        "raw_gnn_anomaly_score": 0.5096,
+        "calibrated_gnn_risk": 0.0,
+        "relational_weight_in_ensemble": 0.22,
+        "orig_historical_out_degree": 0.0,
+        "orig_historical_out_volume": 0.0,
+        "dest_historical_in_degree": 0.0,
+        "dest_historical_in_volume": 0.0
+      },
+      "regulatory_disclaimers": [
+        "PaySim Simulation Topology: Transactions are generated as synthetic disjoint pairs; genuine multi-hop money laundering chains and complex cyclic fraud rings are absent in this dataset.",
+        "Temporal Batching Resolution: Graph neural network embeddings reflect 25-hour causal training windows evaluated against hourly streaming test increments.",
+        "Attribution vs. Causal Intent: Feature and graph attributions represent statistical model sensitivities, not forensic or legal proof of fraud.",
+        "Research Prototype Status: Developed for research and educational purposes; not certified or hardened for live core-banking financial systems."
+      ]
+    }
+  },
+  "methodological_limitations": {
+    "paysim_topology": "Synthetic transaction generator pairs disjoint accounts; multi-hop mule networks and cyclic rings are absent.",
+    "temporal_granularity": "GNN trained on 25-hour causal batch windows and evaluated on hourly streaming increments.",
+    "balance_depletion_synthetic_artifact": "In PaySim, simulated fraud agents almost invariably drain 100% of the account balance (orig_balance_depletion == 1.0, expected_newbalance_orig == 0.0), creating an artificial feature artifact that does not reflect sophisticated real-world partial-drain laundering.",
+    "attribution_scope": "SHAP and graph features denote statistical sensitivity, not causal legal fraud proof.",
+    "production_readiness": "Research prototype; not certified for real-world banking deployment. Demonstrates architectural viability on synthetic data only.",
+    "risk_policy_status": "Risk tiers and actions are illustrative prototype demonstrations evaluated on synthetic PaySim data, not validated real-world banking policies. Real deployment requires operational validation, false-positive impact analysis, governance approval, and human oversight."
+  }
+}
