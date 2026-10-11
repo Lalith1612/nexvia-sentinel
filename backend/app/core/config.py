@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     THRESHOLD_MEDIUM: float = 0.20
     THRESHOLD_LOW: float = 0.00
 
+    # Replay configuration (Phase 5.3A)
+    MAX_DIRECT_REPLAY_RECORDS: int = 1000
+    MAX_DATASET_REPLAY_RECORDS: int = 5000
+    TEST_DATASET_PATH: Path = DATA_DIR / "test.parquet"
+
     # Server execution
     HOST: str = "127.0.0.1"
     PORT: int = 8000
