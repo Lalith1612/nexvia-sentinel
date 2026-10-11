@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import logging
+import math
 from pathlib import Path
 import threading
 import time
@@ -57,6 +58,9 @@ _submission_lock = threading.Lock()
 
 # Cooperative cancellation flags keyed by job_id
 _cancellation_flags: Dict[str, bool] = {}
+
+# Active in-flight execution progress dictionary keyed by job_id
+_active_job_progress: Dict[str, Dict[str, Any]] = {}
 
 
 def hash_file_contents(file_path: Path, chunk_size: int = 65536) -> str:
@@ -172,6 +176,191 @@ def _prepare_inline_records(
     return records
 
 
+def _build_metrics_summary(
+    total_records: int,
+    processed_count: int = 0,
+    failed_count: int = 0,
+    skipped_count: int = 0,
+    latencies: Optional[List[float]] = None,
+    tier_counts: Optional[Dict[str, int]] = None,
+    action_counts: Optional[Dict[str, int]] = None,
+    total_amount_replayed: float = 0.0,
+    flagged_amount: float = 0.0,
+    scores: Optional[List[float]] = None,
+    score_buckets: Optional[Dict[str, int]] = None,
+    t_job_duration: float = 0.0,
+    is_cancelled: bool = False,
+    is_failed: bool = False,
+    **kwargs: Any
+) -> Dict[str, Any]:
+    """
+    Constructs a strongly typed, mathematically consistent metrics summary
+    for completed, cancelled, or failed replay jobs.
+    """
+    if "processed" in kwargs:
+        processed_count = kwargs["processed"]
+    if "skipped_stale" in kwargs:
+        skipped_count = kwargs["skipped_stale"]
+    if "failed" in kwargs:
+        failed_count = kwargs["failed"]
+    if "latencies_ms" in kwargs:
+        latencies = kwargs["latencies_ms"]
+    if "risk_tier_counts" in kwargs:
+        tier_counts = kwargs["risk_tier_counts"]
+    if "action_counts" in kwargs:
+        action_counts = kwargs["action_counts"]
+    if "total_amount" in kwargs:
+        total_amount_replayed = kwargs["total_amount"]
+    if "hybrid_scores" in kwargs:
+        scores = kwargs["hybrid_scores"]
+    if "elapsed_sec" in kwargs:
+        t_job_duration = kwargs["elapsed_sec"]
+
+    if latencies is None:
+        latencies = []
+    if tier_counts is None:
+        tier_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    if action_counts is None:
+        action_counts = {
+            "AUTOMATED_BLOCK": 0,
+            "STEP_UP_AUTHENTICATION": 0,
+            "MANUAL_ANALYST_REVIEW": 0,
+            "AUTOMATED_CLEAR_AND_SETTLE": 0
+        }
+    if scores is None:
+        scores = []
+
+    # 1. Latency statistics
+    if latencies:
+        lat_stats = {
+            "min": round(float(min(latencies)), 2),
+            "max": round(float(max(latencies)), 2),
+            "mean": round(float(np.mean(latencies)), 2),
+            "p50": round(float(np.percentile(latencies, 50)), 2),
+            "p95": round(float(np.percentile(latencies, 95)), 2),
+            "total_duration_sec": round(float(t_job_duration), 2)
+        }
+    else:
+        lat_stats = {
+            "min": 0.0,
+            "max": 0.0,
+            "mean": 0.0,
+            "p50": 0.0,
+            "p95": 0.0,
+            "total_duration_sec": round(float(t_job_duration), 2)
+        }
+
+    # 2. Financial exposure
+    if total_amount_replayed > 0.0:
+        flagged_amt_pct = round((flagged_amount / total_amount_replayed) * 100.0, 2)
+    else:
+        flagged_amt_pct = 0.0
+
+    if processed_count > 0:
+        flagged_rec_count = tier_counts.get("CRITICAL", 0) + tier_counts.get("HIGH", 0)
+        flagged_rec_pct = round((flagged_rec_count / processed_count) * 100.0, 2)
+    else:
+        flagged_rec_pct = 0.0
+
+    financial_exposure = {
+        "total_amount_replayed": round(float(total_amount_replayed), 2),
+        "flagged_amount": round(float(flagged_amount), 2),
+        "flagged_amount_percentage": flagged_amt_pct,
+        "flagged_record_percentage": flagged_rec_pct
+    }
+
+    # 3. Score distribution
+    if score_buckets:
+        norm_buckets = {
+            "[0.0, 0.2)": score_buckets.get("[0.0, 0.2)", score_buckets.get("bucket_0_0_to_0_2", score_buckets.get("0.0-0.2", 0))),
+            "[0.2, 0.5)": score_buckets.get("[0.2, 0.5)", score_buckets.get("bucket_0_2_to_0_5", score_buckets.get("0.2-0.5", 0))),
+            "[0.5, 0.8)": score_buckets.get("[0.5, 0.8)", score_buckets.get("bucket_0_5_to_0_8", score_buckets.get("0.5-0.8", 0))),
+            "[0.8, 1.0]": score_buckets.get("[0.8, 1.0]", score_buckets.get("[0.8, 1.0)", score_buckets.get("bucket_0_8_to_1_0", score_buckets.get("0.8-1.0", 0)))),
+        }
+    else:
+        norm_buckets = {
+            "[0.0, 0.2)": 0,
+            "[0.2, 0.5)": 0,
+            "[0.5, 0.8)": 0,
+            "[0.8, 1.0]": 0
+        }
+        for s in scores:
+            if s < 0.2:
+                norm_buckets["[0.0, 0.2)"] += 1
+            elif s < 0.5:
+                norm_buckets["[0.2, 0.5)"] += 1
+            elif s < 0.8:
+                norm_buckets["[0.5, 0.8)"] += 1
+            else:
+                norm_buckets["[0.8, 1.0]"] += 1
+
+    if scores:
+        mean_score = round(float(np.mean(scores)), 4)
+        median_score = round(float(np.median(scores)), 4)
+    else:
+        mean_score = None
+        median_score = None
+
+    score_dist = {
+        "mean_score": mean_score,
+        "median_score": median_score,
+        "mean_hybrid_score": mean_score,
+        "median_hybrid_score": median_score,
+        "score_buckets": norm_buckets
+    }
+
+    # 4. Progress status at termination
+    completed = processed_count + failed_count + skipped_count
+    progress_pct = round(min(100.0, (completed / total_records) * 100.0), 1) if total_records > 0 else 100.0
+    throughput = round(completed / t_job_duration, 2) if (completed >= 1 and t_job_duration > 0.05) else None
+    eta = 0.0 if not (is_cancelled or is_failed) else None
+
+    progress_summary = {
+        "progress_percentage": progress_pct,
+        "elapsed_duration_sec": round(float(t_job_duration), 2),
+        "throughput_records_per_sec": throughput,
+        "estimated_remaining_sec": eta
+    }
+
+    # 5. Operational disclaimer
+    if is_cancelled:
+        disclaimer = (
+            "Replay job was CANCELLED before completion. Partial metrics reflect observations processed prior to cancellation. "
+            "Evaluated against static frozen graph snapshot (step 620) without state mutation."
+        )
+    elif is_failed:
+        disclaimer = (
+            "Replay job FAILED before completion. Partial metrics reflect observations processed prior to failure. "
+            "Evaluated against static frozen graph snapshot (step 620) without state mutation."
+        )
+    else:
+        disclaimer = (
+            "DRY_RUN execution evaluates transactions against a static frozen graph snapshot (step 620) "
+            "and does not simulate dynamic graph evolution or mutate persistence. Latency and risk tier "
+            "tallies reflect pipeline throughput, not real-world fraud confirmation."
+        )
+
+    return {
+        "records_summary": {
+            "total": total_records,
+            "processed": processed_count,
+            "failed": failed_count,
+            "skipped_stale_watermark": skipped_count
+        },
+        "latency_ms": lat_stats,
+        "progress": progress_summary,
+        "financial_exposure": financial_exposure,
+        "score_distribution": score_dist,
+        "risk_tier_counts": tier_counts,
+        "action_counts": action_counts,
+        "state_mutations": {
+            "alerts_created": 0,
+            "settlements_applied": 0
+        },
+        "disclaimer": disclaimer
+    }
+
+
 def execute_replay_worker(
     db_path: Path,
     job_id: str,
@@ -214,6 +403,7 @@ def execute_replay_worker(
             key=lambda x: (x["step"], x["nameOrig"], -x["amount"], x["transaction_id"])
         )
 
+        total_recs = len(sorted_records)
         processed_count = 0
         failed_count = 0
         skipped_count = 0
@@ -227,12 +417,37 @@ def execute_replay_worker(
         }
         error_samples: List[Dict[str, Any]] = []
 
+        total_amount_replayed = 0.0
+        flagged_amount = 0.0
+        scores: List[float] = []
+        score_buckets = {"[0.0, 0.2)": 0, "[0.2, 0.5)": 0, "[0.5, 0.8)": 0, "[0.8, 1.0]": 0}
+
         t_job_start = time.perf_counter()
+        last_progress_write_time = t_job_start
+
+        # Dynamic progress cadence: shorter batches update more frequently
+        progress_interval = min(25, max(5, total_recs // 10)) if total_recs > 20 else max(1, total_recs // 4)
 
         for idx, rec in enumerate(sorted_records):
             # Check for cooperative cancellation
             if _cancellation_flags.get(job_id, False):
                 logger.info("Replay job %s cancellation detected at record %d. Halting worker.", job_id, idx)
+                t_duration = time.perf_counter() - t_job_start
+                partial_metrics = _build_metrics_summary(
+                    total_records=total_recs,
+                    processed_count=processed_count,
+                    failed_count=failed_count,
+                    skipped_count=skipped_count,
+                    latencies=latencies,
+                    tier_counts=tier_counts,
+                    action_counts=action_counts,
+                    total_amount_replayed=total_amount_replayed,
+                    flagged_amount=flagged_amount,
+                    scores=scores,
+                    score_buckets=score_buckets,
+                    t_job_duration=t_duration,
+                    is_cancelled=True
+                )
                 update_replay_job_status(
                     db_path=db_path,
                     job_id=job_id,
@@ -241,8 +456,10 @@ def execute_replay_worker(
                     processed_records=processed_count,
                     failed_records=failed_count,
                     skipped_records=skipped_count,
+                    metrics_summary=partial_metrics,
                     error_summary=error_samples
                 )
+                _active_job_progress.pop(job_id, None)
                 return
 
             # Watermark check: step <= 620 is prior to or within graph snapshot cutoff
@@ -255,47 +472,97 @@ def execute_replay_worker(
                         "step": rec["step"],
                         "reason": "SKIPPED_STALE_WATERMARK: step <= 620 is prior to or within graph snapshot cutoff (step 620)."
                     })
-                continue
+            else:
+                try:
+                    txn_req = TransactionRequest(
+                        step=rec["step"],
+                        type=rec["type"],
+                        amount=rec["amount"],
+                        nameOrig=rec["nameOrig"],
+                        oldbalanceOrg=rec["oldbalanceOrg"],
+                        newbalanceOrig=rec.get("newbalanceOrig"),
+                        nameDest=rec["nameDest"],
+                        oldbalanceDest=rec["oldbalanceDest"],
+                        newbalanceDest=rec.get("newbalanceDest")
+                    )
 
-            try:
-                txn_req = TransactionRequest(
-                    step=rec["step"],
-                    type=rec["type"],
-                    amount=rec["amount"],
-                    nameOrig=rec["nameOrig"],
-                    oldbalanceOrg=rec["oldbalanceOrg"],
-                    newbalanceOrig=rec.get("newbalanceOrig"),
-                    nameDest=rec["nameDest"],
-                    oldbalanceDest=rec["oldbalanceDest"],
-                    newbalanceDest=rec.get("newbalanceDest")
-                )
+                    t0 = time.perf_counter()
+                    pred_resp = inference_service.predict_transaction(txn_req)
+                    lat_ms = (time.perf_counter() - t0) * 1000.0
 
-                t0 = time.perf_counter()
-                pred_resp = inference_service.predict_transaction(txn_req)
-                lat_ms = (time.perf_counter() - t0) * 1000.0
+                    score = float(pred_resp.hybrid_risk_score)
+                    if not math.isfinite(score) or not (0.0 <= score <= 1.0):
+                        raise ValueError(
+                            f"Model produced invalid hybrid risk score: {score} "
+                            f"(must be finite float in [0.0, 1.0]) for transaction {rec['transaction_id']}"
+                        )
 
-                latencies.append(lat_ms)
-                tier = pred_resp.assigned_risk_tier
-                action = pred_resp.recommended_action
+                    # Only accumulate metrics once prediction and score are confirmed valid
+                    latencies.append(lat_ms)
+                    tier = pred_resp.assigned_risk_tier
+                    action = pred_resp.recommended_action
+                    amt = float(rec["amount"])
 
-                if tier in tier_counts:
-                    tier_counts[tier] += 1
-                if action in action_counts:
-                    action_counts[action] += 1
+                    total_amount_replayed += amt
+                    scores.append(score)
 
-                processed_count += 1
+                    # Bucket intervals: [0.0, 0.2), [0.2, 0.5), [0.5, 0.8), [0.8, 1.0]
+                    if score < 0.2:
+                        score_buckets["[0.0, 0.2)"] += 1
+                    elif score < 0.5:
+                        score_buckets["[0.2, 0.5)"] += 1
+                    elif score < 0.8:
+                        score_buckets["[0.5, 0.8)"] += 1
+                    else:
+                        score_buckets["[0.8, 1.0]"] += 1
 
-            except Exception as e:
-                failed_count += 1
-                if len(error_samples) < 10:
-                    error_samples.append({
-                        "transaction_id": rec["transaction_id"],
-                        "step": rec["step"],
-                        "error": str(e)
-                    })
+                    if tier in ("CRITICAL", "HIGH"):
+                        flagged_amount += amt
 
-            # Progress check / update every 50 records
-            if (idx + 1) % 50 == 0:
+                    if tier in tier_counts:
+                        tier_counts[tier] += 1
+                    if action in action_counts:
+                        action_counts[action] += 1
+
+                    processed_count += 1
+
+                except Exception as e:
+                    failed_count += 1
+                    if len(error_samples) < 10:
+                        error_samples.append({
+                            "transaction_id": rec["transaction_id"],
+                            "step": rec["step"],
+                            "error": str(e)[:500]
+                        })
+
+            # Real-time progress tracking
+            completed = processed_count + failed_count + skipped_count
+            now_t = time.perf_counter()
+            elapsed = now_t - t_job_start
+            pct = round(min(100.0, (completed / total_recs) * 100.0), 1) if total_recs > 0 else 100.0
+
+            # Guard against fabricated throughput: require >= 3 records and >= 0.2s elapsed
+            throughput = None
+            eta = None
+            if completed >= 3 and elapsed >= 0.2:
+                throughput = round(completed / elapsed, 2)
+                remaining = max(0, total_recs - completed)
+                if throughput > 0.0 and remaining > 0:
+                    eta = round(remaining / throughput, 1)
+                elif remaining == 0:
+                    eta = 0.0
+
+            progress_data = {
+                "progress_percentage": pct,
+                "elapsed_duration_sec": round(elapsed, 2),
+                "throughput_records_per_sec": throughput,
+                "estimated_remaining_sec": eta
+            }
+            _active_job_progress[job_id] = progress_data
+
+            # Throttled SQLite persistence (cadence-based or minimum 2.0s interval)
+            time_since_last_write = now_t - last_progress_write_time
+            if ((idx + 1) % progress_interval == 0 and time_since_last_write >= 0.5) or time_since_last_write >= 2.0 or (idx + 1 == total_recs):
                 now_iso = datetime.now(timezone.utc).isoformat()
                 update_replay_job_progress(
                     db_path=db_path,
@@ -306,49 +573,26 @@ def execute_replay_worker(
                     updated_at=now_iso,
                     expected_status="RUNNING"
                 )
+                last_progress_write_time = now_t
 
         t_job_duration = time.perf_counter() - t_job_start
 
         # 3. Compute final metrics
-        if latencies:
-            lat_stats = {
-                "min": round(float(min(latencies)), 2),
-                "max": round(float(max(latencies)), 2),
-                "mean": round(float(np.mean(latencies)), 2),
-                "p50": round(float(np.percentile(latencies, 50)), 2),
-                "p95": round(float(np.percentile(latencies, 95)), 2),
-                "total_duration_sec": round(float(t_job_duration), 2)
-            }
-        else:
-            lat_stats = {
-                "min": 0.0,
-                "max": 0.0,
-                "mean": 0.0,
-                "p50": 0.0,
-                "p95": 0.0,
-                "total_duration_sec": round(float(t_job_duration), 2)
-            }
-
-        metrics_summary = {
-            "records_summary": {
-                "total": len(raw_records),
-                "processed": processed_count,
-                "failed": failed_count,
-                "skipped_stale_watermark": skipped_count
-            },
-            "latency_ms": lat_stats,
-            "risk_tier_counts": tier_counts,
-            "action_counts": action_counts,
-            "state_mutations": {
-                "alerts_created": 0,
-                "settlements_applied": 0
-            },
-            "disclaimer": (
-                "DRY_RUN execution evaluates transactions against a static frozen graph snapshot (step 620) "
-                "and does not simulate dynamic graph evolution or mutate persistence. Latency and risk tier "
-                "tallies reflect pipeline throughput, not real-world fraud confirmation."
-            )
-        }
+        final_metrics = _build_metrics_summary(
+            total_records=total_recs,
+            processed_count=processed_count,
+            failed_count=failed_count,
+            skipped_count=skipped_count,
+            latencies=latencies,
+            tier_counts=tier_counts,
+            action_counts=action_counts,
+            total_amount_replayed=total_amount_replayed,
+            flagged_amount=flagged_amount,
+            scores=scores,
+            score_buckets=score_buckets,
+            t_job_duration=t_job_duration,
+            is_cancelled=False
+        )
 
         # 4. Atomically complete the job
         update_replay_job_status(
@@ -359,9 +603,10 @@ def execute_replay_worker(
             processed_records=processed_count,
             failed_records=failed_count,
             skipped_records=skipped_count,
-            metrics_summary=metrics_summary,
+            metrics_summary=final_metrics,
             error_summary=error_samples
         )
+        _active_job_progress.pop(job_id, None)
         logger.info(
             "Replay job %s completed successfully: %d processed, %d skipped, %d failed in %.2fs.",
             job_id, processed_count, skipped_count, failed_count, t_job_duration
@@ -369,14 +614,33 @@ def execute_replay_worker(
 
     except Exception as exc:
         logger.exception("Unexpected error in replay worker for job %s: %s", job_id, str(exc))
+        t_job_duration = time.perf_counter() - t_job_start
+        failed_metrics = _build_metrics_summary(
+            total_records=len(raw_records),
+            processed_count=processed_count,
+            failed_count=failed_count,
+            skipped_count=skipped_count,
+            latencies=latencies,
+            tier_counts=tier_counts,
+            action_counts=action_counts,
+            total_amount_replayed=total_amount_replayed,
+            flagged_amount=flagged_amount,
+            scores=scores,
+            score_buckets=score_buckets,
+            t_job_duration=t_job_duration,
+            is_failed=True
+        )
         update_replay_job_status(
             db_path=db_path,
             job_id=job_id,
             new_status="FAILED",
             expected_status="RUNNING",
-            error_summary=[{"error": f"Unhandled worker exception: {str(exc)}"}]
+            metrics_summary=failed_metrics,
+            error_summary=[{"error": f"Unhandled worker exception: {str(exc)[:500]}"}]
         )
+        _active_job_progress.pop(job_id, None)
     finally:
+        _active_job_progress.pop(job_id, None)
         _cancellation_flags.pop(job_id, None)
         _replay_worker_lock.release()
 
@@ -465,6 +729,21 @@ class SentinelReplayService:
 
             return job_dict, 201
 
+    def get_job(
+        self,
+        db_path: Path,
+        job_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Retrieves a replay job by job_id, attaching live in-flight progress metadata if running.
+        """
+        job = get_replay_job(db_path, job_id)
+        if not job:
+            return None
+        if job["status"] == "RUNNING" and job_id in _active_job_progress:
+            job["progress"] = _active_job_progress[job_id]
+        return job
+
     def cancel_job(
         self,
         db_path: Path,
@@ -495,6 +774,8 @@ class SentinelReplayService:
         elif current_status == "RUNNING":
             # Signal worker cooperative cancellation
             _cancellation_flags[job_id] = True
+            if job_id in _active_job_progress:
+                job["progress"] = _active_job_progress[job_id]
             return job, 200
 
         return job, 200

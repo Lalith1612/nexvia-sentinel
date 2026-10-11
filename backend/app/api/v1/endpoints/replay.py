@@ -100,6 +100,9 @@ def list_replay_jobs_endpoint(
         limit=limit,
         offset=offset
     )
+    for row in items:
+        if row["status"] == "RUNNING" and row["job_id"] in replay_service._active_job_progress:
+            row["progress"] = replay_service._active_job_progress[row["job_id"]]
     return ReplayJobListResponse(
         total=total,
         limit=limit,
@@ -117,7 +120,7 @@ def list_replay_jobs_endpoint(
 )
 def get_replay_job_endpoint(job_id: str) -> ReplayJobResponse:
     db_path = _get_active_db_path()
-    job = get_replay_job(db_path, job_id)
+    job = replay_service.get_job(db_path, job_id)
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

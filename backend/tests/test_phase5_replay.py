@@ -564,3 +564,376 @@ def test_identical_dataset_contents_yield_identical_fingerprints(tmp_path, monke
 
     assert fp1 == fp2
     assert len(fp1) == 64  # SHA-256 hex digest
+
+
+def test_replay_observability_financial_exposure_and_score_distribution(client):
+    """
+    Verifies that a completed replay job calculates strongly typed financial exposure
+    and score distribution metrics with accurate tier and histogram reconciliation.
+    """
+    records = [
+        # Normal lower-risk transaction
+        {"step": 625, "type": "PAYMENT", "amount": 100.0, "nameOrig": "C_EXP_01", "oldbalanceOrg": 500.0, "nameDest": "M_EXP_01", "oldbalanceDest": 0.0},
+        # High amount transfer
+        {"step": 626, "type": "TRANSFER", "amount": 250000.0, "nameOrig": "C_EXP_02", "oldbalanceOrg": 250000.0, "nameDest": "C_EXP_DST_02", "oldbalanceDest": 0.0},
+        # Stale record (watermark step <= 620)
+        {"step": 600, "type": "TRANSFER", "amount": 99999.0, "nameOrig": "C_STALE_EXP", "oldbalanceOrg": 99999.0, "nameDest": "C_STALE_DST", "oldbalanceDest": 0.0},
+    ]
+
+    res = client.post("/api/v1/replay/jobs", json={"records": records})
+    assert res.status_code == 201
+    job_id = res.json()["job_id"]
+
+    final_job = _wait_for_job_completion(client, job_id)
+    assert final_job["status"] == "COMPLETED"
+    assert final_job["total_records"] == 3
+    assert final_job["processed_records"] == 2
+    assert final_job["skipped_records"] == 1
+    assert final_job["failed_records"] == 0
+
+    # Test top-level progress field
+    progress = final_job["progress"]
+    assert progress is not None
+    assert progress["progress_percentage"] == 100.0
+    assert progress["elapsed_duration_sec"] >= 0.0
+    assert progress["estimated_remaining_sec"] == 0.0
+
+    # Test metrics summary
+    metrics = final_job["metrics_summary"]
+    assert metrics is not None
+
+    # 1. Financial exposure
+    f_exp = metrics["financial_exposure"]
+    assert f_exp is not None
+    # Stale amount (99999.0) must NOT be included in total_amount_replayed
+    assert f_exp["total_amount_replayed"] == pytest.approx(250100.0, rel=1e-3)
+    assert f_exp["flagged_amount"] <= f_exp["total_amount_replayed"]
+    assert 0.0 <= f_exp["flagged_amount_percentage"] <= 100.0
+    assert 0.0 <= f_exp["flagged_record_percentage"] <= 100.0
+
+    # 2. Score distribution
+    s_dist = metrics["score_distribution"]
+    assert s_dist is not None
+    assert 0.0 <= s_dist["mean_score"] <= 1.0
+    assert 0.0 <= s_dist["median_score"] <= 1.0
+    buckets = s_dist["score_buckets"]
+    total_buckets = (
+        buckets["[0.0, 0.2)"]
+        + buckets["[0.2, 0.5)"]
+        + buckets["[0.5, 0.8)"]
+        + buckets["[0.8, 1.0]"]
+    )
+    # Histogram count must reconcile exactly with processed_records
+    assert total_buckets == 2
+
+    # 3. Risk tier and action counts
+    tier_counts = metrics["risk_tier_counts"]
+    assert sum(tier_counts.values()) == 2
+    action_counts = metrics["action_counts"]
+    assert sum(action_counts.values()) == 2
+
+    # Flagged records count reconciliation
+    flagged_recs = tier_counts.get("CRITICAL", 0) + tier_counts.get("HIGH", 0)
+    expected_flagged_pct = (flagged_recs / 2.0) * 100.0
+    assert f_exp["flagged_record_percentage"] == pytest.approx(expected_flagged_pct, rel=1e-3)
+
+    # 4. State mutations and disclaimer
+    mutations = metrics["state_mutations"]
+    assert mutations["alerts_created"] == 0
+    assert mutations["settlements_applied"] == 0
+    assert "DRY_RUN" in metrics["disclaimer"]
+
+
+def test_score_bucket_boundary_exact_reconciliation():
+    """
+    Unit test verifying exact boundary semantics for score distribution histogram:
+    [0.0, 0.2), [0.2, 0.5), [0.5, 0.8), and [0.8, 1.0].
+    """
+    from backend.app.services.replay_service import _build_metrics_summary
+
+    test_scores = [0.0, 0.1999, 0.2, 0.4999, 0.5, 0.7999, 0.8, 1.0]
+    metrics = _build_metrics_summary(
+        processed=len(test_scores),
+        skipped_stale=0,
+        failed=0,
+        latencies_ms=[10.0] * len(test_scores),
+        risk_tier_counts={"LOW": 4, "MEDIUM": 2, "HIGH": 1, "CRITICAL": 1},
+        action_counts={"ALLOW": 4, "REVIEW": 2, "STEP_UP": 1, "BLOCK": 1},
+        total_amount=800.0,
+        flagged_amount=200.0,
+        flagged_records=2,
+        hybrid_scores=test_scores,
+        elapsed_sec=1.5,
+        total_records=len(test_scores)
+    )
+
+    s_dist = metrics["score_distribution"]
+    buckets = s_dist["score_buckets"]
+    assert buckets["[0.0, 0.2)"] == 2  # 0.0, 0.1999
+    assert buckets["[0.2, 0.5)"] == 2  # 0.2, 0.4999
+    assert buckets["[0.5, 0.8)"] == 2  # 0.5, 0.7999
+    assert buckets["[0.8, 1.0]"] == 2  # 0.8, 1.0
+    assert sum(buckets.values()) == len(test_scores)
+    assert s_dist["mean_score"] == pytest.approx(sum(test_scores) / len(test_scores), abs=1e-4)
+    # Median of 8 sorted elements is average of 4th and 5th (indices 3 and 4)
+    expected_median = (0.4999 + 0.5) / 2.0
+    assert s_dist["median_score"] == pytest.approx(expected_median, abs=1e-4)
+
+
+def test_zero_processed_and_all_stale_observability_safety():
+    """
+    Verifies that _build_metrics_summary safely handles zero processed records
+    without division-by-zero, returning valid None for scores and 0.0 for percentages.
+    """
+    from backend.app.services.replay_service import _build_metrics_summary
+
+    metrics = _build_metrics_summary(
+        processed=0,
+        skipped_stale=5,
+        failed=0,
+        latencies_ms=[],
+        risk_tier_counts={},
+        action_counts={},
+        total_amount=0.0,
+        flagged_amount=0.0,
+        flagged_records=0,
+        hybrid_scores=[],
+        elapsed_sec=0.25,
+        total_records=5
+    )
+
+    assert metrics["records_summary"]["processed"] == 0
+    assert metrics["records_summary"]["skipped_stale_watermark"] == 5
+    assert metrics["records_summary"]["failed"] == 0
+
+    f_exp = metrics["financial_exposure"]
+    assert f_exp["total_amount_replayed"] == 0.0
+    assert f_exp["flagged_amount"] == 0.0
+    assert f_exp["flagged_amount_percentage"] == 0.0
+    assert f_exp["flagged_record_percentage"] == 0.0
+
+    s_dist = metrics["score_distribution"]
+    assert s_dist["mean_score"] is None
+    assert s_dist["median_score"] is None
+    assert all(count == 0 for count in s_dist["score_buckets"].values())
+
+    progress = metrics["progress"]
+    assert progress["progress_percentage"] == 100.0
+    assert progress["estimated_remaining_sec"] == 0.0
+
+
+def test_cancellation_persists_partial_metrics(client):
+    """
+    Submits a batch of 60 records and requests cancellation mid-flight.
+    Verifies that:
+    1. The job transitions to CANCELLED status.
+    2. Partial aggregate metrics are persisted and returned in metrics_summary.
+    3. Exposure and score distribution reflect processed records up to cancellation.
+    """
+    records = [
+        {
+            "step": 625 + (i // 10),
+            "type": "TRANSFER",
+            "amount": 500.0 * (i + 1),
+            "nameOrig": f"C_PARTIAL_{i}",
+            "oldbalanceOrg": 500.0 * (i + 1),
+            "nameDest": f"C_PARTIAL_DST_{i}",
+            "oldbalanceDest": 0.0
+        }
+        for i in range(60)
+    ]
+
+    res = client.post("/api/v1/replay/jobs", json={"records": records})
+    assert res.status_code == 201
+    job_id = res.json()["job_id"]
+
+    # Cancel immediately
+    client.post(f"/api/v1/replay/jobs/{job_id}/cancel")
+
+    final_job = _wait_for_job_completion(client, job_id)
+    assert final_job["status"] in {"CANCELLED", "COMPLETED"}
+
+    # Regardless of whether it managed to process 0 or more items before cancellation,
+    # metrics_summary must be present and valid
+    metrics = final_job["metrics_summary"]
+    assert metrics is not None
+    assert "records_summary" in metrics
+    assert "financial_exposure" in metrics
+    assert "score_distribution" in metrics
+    assert "state_mutations" in metrics
+    assert metrics["state_mutations"]["alerts_created"] == 0
+    assert metrics["state_mutations"]["settlements_applied"] == 0
+
+    if final_job["status"] == "CANCELLED":
+        assert final_job["processed_records"] < 60
+
+
+def test_mid_batch_failure_persists_partial_metrics_and_bounded_diagnostics(client, monkeypatch):
+    """
+    Verifies that if an unexpected error occurs during transaction processing:
+    1. The job transitions to FAILED status.
+    2. Partial metrics up to the failure are preserved in metrics_summary.
+    3. Error summary diagnostics are bounded (<= 500 characters).
+    """
+    import backend.app.services.replay_service as rep_mod
+
+    def mock_failing_update(*args, **kwargs):
+        raise RuntimeError("Database write failure during progress update: " + "X" * 600)
+
+    monkeypatch.setattr(rep_mod, "update_replay_job_progress", mock_failing_update)
+
+    records = [
+        {"step": 625, "type": "TRANSFER", "amount": 1000.0, "nameOrig": "C_FAIL_A", "oldbalanceOrg": 1000.0, "nameDest": "C_DST_A", "oldbalanceDest": 0.0},
+        {"step": 626, "type": "TRANSFER", "amount": 2000.0, "nameOrig": "C_FAIL_B", "oldbalanceOrg": 2000.0, "nameDest": "C_DST_B", "oldbalanceDest": 0.0},
+        {"step": 627, "type": "TRANSFER", "amount": 3000.0, "nameOrig": "C_FAIL_C", "oldbalanceOrg": 3000.0, "nameDest": "C_DST_C", "oldbalanceDest": 0.0},
+    ]
+
+    res = client.post("/api/v1/replay/jobs", json={"records": records})
+    assert res.status_code == 201
+    job_id = res.json()["job_id"]
+
+    final_job = _wait_for_job_completion(client, job_id)
+    assert final_job["status"] == "FAILED"
+
+    # Diagnostics must be bounded to at most 500 chars (plus JSON formatting)
+    err = final_job["error_summary"]
+    assert err is not None
+    assert len(str(err)) <= 600
+    assert "Database write failure" in str(err)
+
+    # Partial metrics must be preserved
+    metrics = final_job["metrics_summary"]
+    assert metrics is not None
+    assert metrics["records_summary"]["total"] == 3
+    assert metrics["financial_exposure"]["total_amount_replayed"] >= 1000.0
+
+
+def test_invalid_and_non_finite_scores_recorded_as_failures_and_excluded_from_metrics(client, monkeypatch):
+    """
+    Verifies that model predictions returning NaN, +/-Infinity, or out-of-range scores
+    are rejected, counted as failed records, recorded in error_summary with clear diagnostics,
+    and excluded from total_amount_replayed and score histogram buckets.
+    """
+    import backend.app.services.replay_service as rep_mod
+    original_predict = rep_mod.inference_service.predict_transaction
+
+    test_scores_sequence = [
+        0.10,          # Record 0: Valid score
+        float("nan"),  # Record 1: NaN
+        float("inf"),  # Record 2: Positive infinity
+        float("-inf"), # Record 3: Negative infinity
+        1.50,          # Record 4: Out-of-range (> 1.0)
+        -0.25,         # Record 5: Out-of-range (< 0.0)
+    ]
+    call_idx = 0
+
+    def mock_predict_varying_scores(req):
+        nonlocal call_idx
+        idx = call_idx
+        call_idx += 1
+        resp = original_predict(req)
+        score_val = test_scores_sequence[idx % len(test_scores_sequence)]
+        return resp.model_copy(update={"hybrid_risk_score": score_val})
+
+    monkeypatch.setattr(rep_mod.inference_service, "predict_transaction", mock_predict_varying_scores)
+
+    records = [
+        {"step": 625, "type": "PAYMENT", "amount": 100.0 * (i + 1), "nameOrig": f"C_INV_{i}", "oldbalanceOrg": 500.0, "nameDest": f"M_INV_{i}", "oldbalanceDest": 0.0}
+        for i in range(len(test_scores_sequence))
+    ]
+
+    res = client.post("/api/v1/replay/jobs", json={"records": records})
+    assert res.status_code == 201
+    job_id = res.json()["job_id"]
+
+    final_job = _wait_for_job_completion(client, job_id)
+    assert final_job["status"] == "COMPLETED"
+    assert final_job["total_records"] == 6
+    assert final_job["processed_records"] == 1
+    assert final_job["failed_records"] == 5
+
+    # Check metrics summary
+    metrics = final_job["metrics_summary"]
+    assert metrics is not None
+    assert metrics["records_summary"]["processed"] == 1
+    assert metrics["records_summary"]["failed"] == 5
+
+    # Financial exposure: ONLY the single valid record amount (100.0) is included
+    f_exp = metrics["financial_exposure"]
+    assert f_exp["total_amount_replayed"] == pytest.approx(100.0, rel=1e-3)
+
+    # Score distribution: ONLY the single valid score (0.10) is in buckets
+    s_dist = metrics["score_distribution"]
+    buckets = s_dist["score_buckets"]
+    assert buckets["[0.0, 0.2)"] == 1
+    assert buckets["[0.2, 0.5)"] == 0
+    assert buckets["[0.5, 0.8)"] == 0
+    assert buckets["[0.8, 1.0]"] == 0
+    assert s_dist["mean_score"] == pytest.approx(0.10, abs=1e-4)
+
+    # Error diagnostics: error_summary must contain entries detailing the invalid scores
+    err_samples = final_job["error_summary"]
+    assert err_samples is not None
+    assert len(err_samples) == 5
+    for err_entry in err_samples:
+        assert "invalid hybrid risk score" in err_entry["error"]
+
+
+def test_running_job_live_progress_with_deterministic_synchronization(client, monkeypatch):
+    """
+    Verifies that GET /api/v1/replay/jobs/{job_id} returns live in-flight progress
+    while a replay job is running, with ETA null while there are insufficient observations.
+    Uses threading events for deterministic synchronization without arbitrary sleeps.
+    """
+    import threading
+    import backend.app.services.replay_service as rep_mod
+    original_predict = rep_mod.inference_service.predict_transaction
+
+    first_record_started = threading.Event()
+    resume_worker = threading.Event()
+    has_paused = False
+
+    def synchronized_predict(req):
+        nonlocal has_paused
+        if not has_paused:
+            has_paused = True
+            first_record_started.set()
+            resume_worker.wait(timeout=5.0)
+        return original_predict(req)
+
+    monkeypatch.setattr(rep_mod.inference_service, "predict_transaction", synchronized_predict)
+
+    records = [
+        {"step": 625, "type": "PAYMENT", "amount": 100.0 * (i + 1), "nameOrig": f"C_SYNC_{i}", "oldbalanceOrg": 500.0, "nameDest": f"M_SYNC_{i}", "oldbalanceDest": 0.0}
+        for i in range(5)
+    ]
+
+    try:
+        res = client.post("/api/v1/replay/jobs", json={"records": records})
+        assert res.status_code == 201
+        job_id = res.json()["job_id"]
+
+        # Wait deterministically until the worker has entered predict_transaction
+        assert first_record_started.wait(timeout=5.0) is True
+
+        # Poll the job while it is actively in RUNNING status
+        poll_res = client.get(f"/api/v1/replay/jobs/{job_id}")
+        assert poll_res.status_code == 200
+        poll_data = poll_res.json()
+
+        assert poll_data["status"] == "RUNNING"
+        assert poll_data["progress"] is not None
+        assert 0.0 <= poll_data["progress"]["progress_percentage"] <= 100.0
+        assert poll_data["progress"]["elapsed_duration_sec"] >= 0.0
+        # With < 3 completed records, ETA and throughput MUST be null (safeguard against fabricated ETA)
+        assert poll_data["progress"]["estimated_remaining_sec"] is None
+        assert poll_data["progress"]["throughput_records_per_sec"] is None
+    finally:
+        # Resume worker unblocking the background thread
+        resume_worker.set()
+
+    final_job = _wait_for_job_completion(client, job_id)
+    assert final_job["status"] == "COMPLETED"
+    assert final_job["processed_records"] == 5
+    assert final_job["progress"]["progress_percentage"] == 100.0
+    assert final_job["progress"]["estimated_remaining_sec"] == 0.0
