@@ -35,8 +35,11 @@ TEST_PARQUET_PATH = PROJECT_ROOT / "ml" / "data" / "processed" / "test.parquet"
 
 
 @pytest.fixture(scope="module")
-def client():
-    """Module-scoped FastAPI TestClient running the full lifespan startup."""
+def client(tmp_path_factory):
+    """Module-scoped FastAPI TestClient running the full lifespan startup with an isolated test ledger."""
+    test_db = tmp_path_factory.mktemp("db") / "test_api_ledger.db"
+    from backend.app.services.inference_service import inference_service
+    inference_service.db_path = test_db
     with TestClient(app) as test_client:
         yield test_client
 

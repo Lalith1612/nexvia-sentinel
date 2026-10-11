@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     TRAIN_SAMPLE_PATH: Path = DATA_DIR / "train_benchmark_sample.parquet"
     VAL_PATH: Path = DATA_DIR / "val.parquet"
 
+    # Durable ledger SQLite database path
+    LEDGER_DB_PATH: Path = PROJECT_ROOT / "backend" / "data" / "sentinel_ledger.db"
+
     # Operational defaults
     DEFAULT_WEIGHT_XGB: float = 0.78
     DEFAULT_WEIGHT_GNN: float = 0.22

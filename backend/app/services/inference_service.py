@@ -33,6 +33,13 @@ from ml.features.graph_builder import (
 from ml.models.gnn_model import SentinelGraphSAGE
 from ml.models.hybrid_model import SentinelHybridRiskModel
 from backend.app.core.config import settings
+from backend.app.core.database import (
+    init_db,
+    record_settlement,
+    get_settlement,
+    get_durable_settlements_since,
+    count_settlements
+)
 from backend.app.schemas.transaction import (
     TransactionRequest,
     SettlementEventRequest,
@@ -82,6 +89,7 @@ class SentinelInferenceService:
 
         # Idempotency and settlement tracking
         self.settled_event_ids: Set[str] = set()
+        self.db_path: Path = settings.LEDGER_DB_PATH
         self._lock = asyncio.Lock()
         self._state_lock = threading.RLock()
         self.snapshot_cutoff_step: int = 0
@@ -185,15 +193,96 @@ class SentinelInferenceService:
             self.snapshot_cutoff_step = 0
             self.max_settled_step = 0
 
+        # Restart Recovery: Initialize durable ledger schema and replay post-cutoff settlements
+        self.init_database()
+        self.recover_durable_settlements()
+
         self.refresh_graph_embeddings()
         self.hybrid_model.graph_builder = self.graph_builder
         self.is_initialized = True
         logger.info(
-            "Graph state ready: %d unique accounts, %d settled edges indexed (snapshot cutoff step: %d).",
+            "Graph state ready: %d unique accounts, %d settled edges indexed (snapshot cutoff step: %d, max watermark: %d).",
             len(self.graph_builder.idx_to_node),
             self.settled_edge_index.shape[1],
-            self.snapshot_cutoff_step
+            self.snapshot_cutoff_step,
+            self.max_settled_step
         )
+
+    def init_database(self, db_path: Optional[Path] = None):
+        """Initializes durable SQLite ledger schema."""
+        if db_path is not None:
+            self.db_path = db_path
+        init_db(self.db_path)
+
+    def reconcile_pending_settlements(
+        self,
+        exclude_txn_id: Optional[str] = None,
+        auto_refresh_embeddings: bool = True
+    ) -> int:
+        """
+        Replays durable post-snapshot settlements from SQLite in strict chronological order
+        that have not yet been reflected in in-memory graph state.
+        Rebuilds graph state deterministically without lookahead or data loss.
+        """
+        with self._state_lock:
+            durable_events = get_durable_settlements_since(self.db_path, self.snapshot_cutoff_step)
+            if not durable_events:
+                return 0
+
+            unreconciled = [
+                row for row in durable_events
+                if row["transaction_id"] not in self.settled_event_ids
+                and row["transaction_id"] != exclude_txn_id
+            ]
+            if not unreconciled:
+                return 0
+
+            logger.info(
+                "Reconciling %d pending durable settlements from ledger (cutoff step %d)...",
+                len(unreconciled),
+                self.snapshot_cutoff_step
+            )
+            for row in unreconciled:
+                u = self.graph_builder.get_or_create_node_id(row["name_orig"])
+                v = self.graph_builder.get_or_create_node_id(row["name_dest"])
+                amt = float(row["amount"])
+
+                prior_u_deg = self.graph_builder.out_degrees.get(u, 0.0)
+                prior_u_vol = self.graph_builder.out_volume.get(u, 0.0)
+                prior_v_deg = self.graph_builder.in_degrees.get(v, 0.0)
+                prior_v_vol = self.graph_builder.in_volume.get(v, 0.0)
+
+                self.graph_builder.out_degrees[u] = prior_u_deg + 1.0
+                self.graph_builder.out_volume[u] = prior_u_vol + amt
+                self.graph_builder.in_degrees[v] = prior_v_deg + 1.0
+                self.graph_builder.in_volume[v] = prior_v_vol + amt
+
+                new_edge = torch.tensor([[u], [v]], dtype=torch.long, device=self.device)
+                if self.settled_edge_index is None or self.settled_edge_index.numel() == 0:
+                    self.settled_edge_index = new_edge
+                else:
+                    self.settled_edge_index = torch.cat([self.settled_edge_index, new_edge], dim=1)
+
+                self.max_settled_step = max(self.max_settled_step, row["step"])
+                self.settled_event_ids.add(row["transaction_id"])
+                logger.info("Reconciled pending settlement %s (step %d) into graph.", row["transaction_id"], row["step"])
+
+            if auto_refresh_embeddings:
+                self.refresh_graph_embeddings()
+
+            logger.info(
+                "Successfully reconciled %d durable settlements. Active watermark advanced to step %d.",
+                len(unreconciled),
+                self.max_settled_step
+            )
+            return len(unreconciled)
+
+    def recover_durable_settlements(self) -> int:
+        """
+        Replays durable post-snapshot settlements from SQLite in strict chronological order.
+        Rebuilds graph state deterministically without lookahead or data loss.
+        """
+        return self.reconcile_pending_settlements(auto_refresh_embeddings=False)
 
     def refresh_graph_embeddings(self):
         """Recomputes node embeddings across the current settled graph snapshot."""
@@ -440,6 +529,16 @@ class SentinelInferenceService:
                         graph_in_degree_dest=float(self.graph_builder.in_degrees.get(v_id, 0.0))
                     )
 
+                # 2. Reconcile any prior pending durable settlements in SQLite (excluding current event if it's already in DB)
+                self.reconcile_pending_settlements(
+                    exclude_txn_id=event.transaction_id,
+                    auto_refresh_embeddings=auto_refresh_embeddings
+                )
+
+                # Check if already recorded in durable SQLite ledger (recovery case where prior in-memory update failed)
+                existing_record = get_settlement(self.db_path, event.transaction_id)
+                already_persisted_in_db = existing_record is not None
+
                 # 2. Chronological watermark check
                 if (self.snapshot_cutoff_step > 0 and event.step <= self.snapshot_cutoff_step) or (self.max_settled_step > 0 and event.step < self.max_settled_step):
                     cutoff_watermark = max(self.snapshot_cutoff_step, self.max_settled_step)
@@ -456,8 +555,23 @@ class SentinelInferenceService:
                 prior_max_settled_step = self.max_settled_step
                 prior_settled_edge_index = self.settled_edge_index
 
+                settled_at = datetime.now(timezone.utc).isoformat()
+
+                # 4. Commit to durable SQLite ledger first (if not already recorded)
+                if not already_persisted_in_db:
+                    record_settlement(
+                        self.db_path,
+                        transaction_id=event.transaction_id,
+                        step=event.step,
+                        type_=event.type,
+                        amount=float(event.amount),
+                        name_orig=event.nameOrig,
+                        name_dest=event.nameDest,
+                        settled_at=settled_at
+                    )
+
                 try:
-                    # 4. Update running graph state
+                    # 5. Update running graph state
                     u = self.graph_builder.get_or_create_node_id(event.nameOrig)
                     v = self.graph_builder.get_or_create_node_id(event.nameDest)
                     amt = float(event.amount)
