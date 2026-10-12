@@ -763,11 +763,16 @@ class SentinelReplayService:
 
         if current_status == "PENDING":
             # Direct cancel before worker claims
+            empty_metrics = _build_metrics_summary(
+                total_records=job.get("total_records", 0),
+                is_cancelled=True
+            )
             updated, was_updated = update_replay_job_status(
                 db_path=db_path,
                 job_id=job_id,
                 new_status="CANCELLED",
-                expected_status="PENDING"
+                expected_status="PENDING",
+                metrics_summary=empty_metrics
             )
             return updated or job, 200
 

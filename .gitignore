@@ -51,6 +51,7 @@ frontend/.vite/
 *.log
 data/raw/
 *.parquet
+!ml/data/processed/test.parquet
 *.csv
 
 # Environment & IDE

@@ -225,6 +225,59 @@ def test_dry_run_registered_dataset_slice(client, replay_db):
     assert count_settlements(replay_db) == initial_settlements
 
 
+def test_missing_dataset_source_returns_400(client, monkeypatch, tmp_path):
+    """
+    Verifies that requesting a registered dataset that does not exist on disk
+    fails cleanly with HTTP 400 Bad Request and descriptive detail,
+    reproducing the Render error condition and ensuring graceful API rejection.
+    """
+    from backend.app.core.config import settings
+
+    empty_data_dir = tmp_path / "empty_processed"
+    empty_data_dir.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(settings, "DATA_DIR", empty_data_dir)
+
+    res = client.post("/api/v1/replay/jobs", json={
+        "dataset_source": "test.parquet",
+        "max_records": 10
+    })
+    assert res.status_code == 400
+    assert "Registered dataset 'test.parquet' not found" in res.json()["detail"]
+
+
+def test_dataset_replay_isolation_and_schema_validation(client, replay_db):
+    """
+    Verifies that replaying test.parquet streams valid records, evaluates them
+    against the inference model, and maintains absolute zero-ledger-mutation isolation.
+    """
+    initial_alerts = count_alerts(replay_db)
+    initial_settlements = count_settlements(replay_db)
+    initial_watermark = inference_service.max_settled_step
+
+    res = client.post("/api/v1/replay/jobs", json={
+        "dataset_source": "test.parquet",
+        "max_records": 25
+    })
+    assert res.status_code == 201
+    job_id = res.json()["job_id"]
+
+    final_job = _wait_for_job_completion(client, job_id)
+    assert final_job["status"] == "COMPLETED"
+    assert final_job["total_records"] == 25
+    assert final_job["processed_records"] + final_job["skipped_records"] == 25
+
+    metrics = final_job["metrics_summary"]
+    assert metrics is not None
+    assert metrics["records_summary"]["total"] == 25
+    assert metrics["state_mutations"]["alerts_created"] == 0
+    assert metrics["state_mutations"]["settlements_applied"] == 0
+
+    # Ensure absolute non-interference with ledger and runtime graph watermark
+    assert count_alerts(replay_db) == initial_alerts
+    assert count_settlements(replay_db) == initial_settlements
+    assert inference_service.max_settled_step == initial_watermark
+
+
 def test_stale_watermark_records_skipped(client):
     """
     Verifies that transactions with step <= 620 are skipped (never scored),

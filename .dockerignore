@@ -31,9 +31,10 @@ backend/data/*.db-shm
 
 # Checkpoints and uncommitted datasets
 ml/models/checkpoints/
-ml/data/
+ml/data/raw/
+ml/data/processed/*.parquet
+!ml/data/processed/test.parquet
 data/
-*.parquet
 *.csv
 
 # Local Environment Secrets
