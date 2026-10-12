@@ -52,6 +52,26 @@ class Settings(BaseSettings):
     HOST: str = "127.0.0.1"
     PORT: int = 8000
     WORKERS: int = 1  # Exactly 1 worker for in-memory graph prototype
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ]
+
+    # Real-Time Kafka Streaming (Phase 6)
+    KAFKA_ENABLED: bool = False
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    KAFKA_TRANSACTIONS_TOPIC: str = "sentinel.transactions"
+    KAFKA_RESULTS_TOPIC: str = "sentinel.fraud-predictions"
+    KAFKA_ALERTS_TOPIC: str = "sentinel.fraud-alerts"
+    KAFKA_DLQ_TOPIC: str = "sentinel.transactions.dlq"
+    KAFKA_CONSUMER_GROUP: str = "sentinel-inference-group"
+    KAFKA_AUTO_OFFSET_RESET: str = "latest"
+    KAFKA_MAX_RETRIES: int = 3
+    KAFKA_RETRY_BACKOFF_MS: int = 200
+    KAFKA_POLL_TIMEOUT_SEC: float = 1.0
+    USE_MOCK_STREAMING: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",

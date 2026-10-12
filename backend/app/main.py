@@ -37,7 +37,24 @@ async def lifespan(app: FastAPI):
         logger.critical("Failed to load Sentinel artifacts during startup: %s", str(exc), exc_info=True)
         inference_service.initialization_error = str(exc)
 
+    # Optional background Kafka consumer worker (Phase 6)
+    if settings.KAFKA_ENABLED:
+        try:
+            from backend.app.workers.kafka_consumer import consumer_worker
+            consumer_worker.start()
+            logger.info("Sentinel Kafka background consumer worker started.")
+        except Exception as kafka_err:
+            logger.error("Failed to start Kafka consumer worker: %s", str(kafka_err))
+
     yield
+
+    if settings.KAFKA_ENABLED:
+        try:
+            from backend.app.workers.kafka_consumer import consumer_worker
+            consumer_worker.stop()
+            logger.info("Sentinel Kafka background consumer worker stopped.")
+        except Exception as kafka_stop_err:
+            logger.warning("Error stopping Kafka consumer worker: %s", str(kafka_stop_err))
 
     logger.info("Shutting down Sentinel Fraud Inference Service.")
 
@@ -50,6 +67,16 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json"
+)
+
+# CORS middleware for local frontend dashboard and authorized origins
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Mount API v1 endpoints
