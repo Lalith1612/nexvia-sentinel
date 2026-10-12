@@ -33,6 +33,7 @@ mlruns/
 # Evidently
 monitoring_reports/
 *.html
+!frontend/index.html
 
 # Feast
 feature_store/data/
