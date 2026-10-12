@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentinel-backend
+  labels:
+    app.kubernetes.io/name: nexvia-sentinel
+    app.kubernetes.io/component: backend
+spec:
+  # Exactly 1 replica:
+  # 1. Statefulness: In-memory GraphSAGE state snapshot is maintained in-process.
+  # 2. SQLite single-writer constraint: SQLite requires ReadWriteOnce storage.
+  # Note: A single-replica SQLite setup does NOT provide durable distributed production storage.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: sentinel-backend
+  template:
+    metadata:
+      labels:
+        app: sentinel-backend
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: backend
+          image: nexvia-sentinel-backend:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: sentinel-config
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 1000m
+              memory: 1536Mi
+          volumeMounts:
+            - name: ledger-storage
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 4
+            failureThreshold: 2
+      volumes:
+        - name: ledger-storage
+          persistentVolumeClaim:
+            claimName: sentinel-backend-pvc

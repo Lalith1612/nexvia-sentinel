@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sentinel-backend-pvc
+  labels:
+    app.kubernetes.io/name: nexvia-sentinel
+    app.kubernetes.io/component: backend-storage
+spec:
+  # ReadWriteOnce: Required because SQLite cannot safely coordinate concurrent multi-pod writes.
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

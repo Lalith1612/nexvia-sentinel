@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: sentinel-backend
+  labels:
+    app.kubernetes.io/name: nexvia-sentinel
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  selector:
+    app: sentinel-backend
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+      protocol: TCP
