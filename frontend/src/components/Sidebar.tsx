@@ -10,6 +10,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { ServiceHealthStatus } from '../types';
+import { getBaseUrl } from '../api/client';
 
 export type NavTab = 'overview' | 'alerts' | 'prediction' | 'replay' | 'streaming';
 
@@ -174,7 +175,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         <div className="footer-attribution">
           <span>NEXVIA TECHNOLOGIES</span>
-          <span style={{ fontFamily: 'var(--font-mono)' }}>:8000</span>
+          <span style={{ fontFamily: 'var(--font-mono)' }}>
+            {getBaseUrl().includes(':8000') ? ':8000' : 'LIVE'}
+          </span>
         </div>
       </div>
     </aside>

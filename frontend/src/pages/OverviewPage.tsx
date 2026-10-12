@@ -11,7 +11,7 @@ import {
   Activity,
   Sliders,
 } from 'lucide-react';
-import { api } from '../api/client';
+import { api, getBaseUrl } from '../api/client';
 import { HealthResponse, ModelInfoResponse, AlertListResponse, ReplayJobListResponse } from '../types';
 import { HealthBadge, RiskTierBadge, ActionBadge, AlertStatusBadge, ReplayStatusBadge } from '../components/Badge';
 import { LoadingState, ErrorAlert } from '../components/Feedback';
@@ -77,7 +77,7 @@ export const OverviewPage: React.FC<OverviewPageProps> = ({ onNavigate, onRefres
     return (
       <ErrorAlert
         title="Backend Connectivity Error"
-        message={`Could not reach the Sentinel FastAPI backend at http://127.0.0.1:8000. ${error}`}
+        message={`Could not reach the Sentinel FastAPI backend at ${getBaseUrl()}. ${error}`}
         onRetry={fetchOverviewData}
       />
     );

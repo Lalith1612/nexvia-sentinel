@@ -5,6 +5,7 @@ import { OverviewPage } from '../pages/OverviewPage';
 import { api } from '../api/client';
 
 vi.mock('../api/client', () => ({
+  getBaseUrl: vi.fn(() => 'http://127.0.0.1:8000'),
   api: {
     getHealth: vi.fn(),
     getModelInfo: vi.fn(),

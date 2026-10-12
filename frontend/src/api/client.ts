@@ -29,10 +29,51 @@ export class ApiError extends Error {
   }
 }
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000').replace(/\/+$/, '');
+export const PRODUCTION_API_FALLBACK = 'https://nexvia-sentinel.onrender.com';
+export const DEVELOPMENT_API_FALLBACK = 'http://127.0.0.1:8000';
+
+/**
+ * Resolves the API base URL based on runtime environment:
+ * 1. Explicit import.meta.env.VITE_API_BASE_URL (if provided).
+ * 2. In production (import.meta.env.PROD), falls back to the live Render backend.
+ * 3. In development (import.meta.env.DEV), defaults to local server (http://127.0.0.1:8000).
+ */
+export function resolveApiBaseUrl(
+  envUrl?: string,
+  isProd: boolean = import.meta.env.PROD
+): string {
+  if (envUrl && envUrl.trim().length > 0) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+  return isProd ? PRODUCTION_API_FALLBACK : DEVELOPMENT_API_FALLBACK;
+}
+
+/**
+ * Safely constructs a full API URL by joining the base URL and endpoint path,
+ * preventing duplicated `/api/v1` prefixes if the base URL already contains it.
+ */
+export function buildApiUrl(baseUrl: string, endpoint: string): string {
+  let cleanBase = baseUrl.trim().replace(/\/+$/, '');
+  const cleanEndpoint = endpoint.trim().startsWith('/') ? endpoint.trim() : `/${endpoint.trim()}`;
+
+  // If cleanBase already ends with /api/v1 and endpoint starts with /api/v1,
+  // strip /api/v1 from cleanBase so it's not duplicated
+  if (cleanBase.endsWith('/api/v1') && cleanEndpoint.startsWith('/api/v1')) {
+    cleanBase = cleanBase.slice(0, -'/api/v1'.length);
+  } else if (!cleanBase.endsWith('/api/v1') && !cleanEndpoint.startsWith('/api/v1')) {
+    // If neither has /api/v1, insert /api/v1
+    return `${cleanBase}/api/v1${cleanEndpoint}`;
+  }
+
+  return `${cleanBase}${cleanEndpoint}`;
+}
+
+export function getBaseUrl(): string {
+  return resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL, import.meta.env.PROD);
+}
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = `${BASE_URL}${endpoint}`;
+  const url = buildApiUrl(getBaseUrl(), endpoint);
   const headers = {
     'Content-Type': 'application/json',
     Accept: 'application/json',
