@@ -19,6 +19,7 @@
 - **Live Production Backend (Render):** [https://nexvia-sentinel.onrender.com](https://nexvia-sentinel.onrender.com)
 - **Interactive OpenAPI / Swagger Documentation:** [https://nexvia-sentinel.onrender.com/docs](https://nexvia-sentinel.onrender.com/docs)
 - **Authoritative Health & Diagnostics Endpoint:** [https://nexvia-sentinel.onrender.com/api/v1/health](https://nexvia-sentinel.onrender.com/api/v1/health)
+- **Live Deployment Link:** https://nexvia-sentinel-ebon.vercel.app/
 
 ---
 
