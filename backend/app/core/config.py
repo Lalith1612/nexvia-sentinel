@@ -2,8 +2,10 @@
 Sentinel Backend Configuration & Environment Settings
 """
 
+import json
 from pathlib import Path
-from typing import List
+from typing import Any, List, Union
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -52,12 +54,27 @@ class Settings(BaseSettings):
     HOST: str = "127.0.0.1"
     PORT: int = 8000
     WORKERS: int = 1  # Exactly 1 worker for in-memory graph prototype
-    CORS_ORIGINS: List[str] = [
+    CORS_ORIGINS: Union[List[str], str] = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000"
     ]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        elif isinstance(v, list):
+            return [str(origin).strip() for origin in v if str(origin).strip()]
+        return v
 
     # Real-Time Kafka Streaming (Phase 6)
     KAFKA_ENABLED: bool = False

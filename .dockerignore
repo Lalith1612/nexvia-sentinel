@@ -1,0 +1,46 @@
+# Git and IDE
+.git/
+.github/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Virtual Environments and Python Caches
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Frontend (Deployed separately on Vercel)
+frontend/
+
+# Local databases and runtime state
+backend/data/*.db
+backend/data/*.db-wal
+backend/data/*.db-shm
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Checkpoints and uncommitted datasets
+ml/models/checkpoints/
+ml/data/
+data/
+*.parquet
+*.csv
+
+# Local Environment Secrets
+.env
+.env.local
+*.local
+
+# Experiment artifacts
+mlruns/
+monitoring_reports/
